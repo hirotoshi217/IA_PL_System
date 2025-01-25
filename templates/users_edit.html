@@ -1,0 +1,338 @@
+<!-- templates/users_edit.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ユーザー編集</title>
+  <!-- Bootstrap CSSの読み込み -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fontsの読み込み（オプション） -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Bootstrap Iconsの読み込み（オプション） -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body {
+      /* 背景画像の設定 */
+      background-image: url("{{ url_for('static', filename='images/finance-background.jpg') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      min-height: 100vh;
+      font-family: 'Roboto', sans-serif;
+      position: relative;
+      margin: 0;
+      padding-top: 56px; /* ナビゲーションバーの高さ分の余白 */
+    }
+
+    /* オーバーレイの追加 */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.3); /* 半透明の黒 */
+      z-index: 1;
+    }
+
+    .main-container {
+      position: relative;
+      z-index: 2; /* オーバーレイの上に表示 */
+      padding: 30px 15px;
+    }
+
+    .page-header {
+      color: #ffffff;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+    }
+
+    .section {
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+      margin-bottom: 30px;
+    }
+
+    .section h2, .section h3 {
+      color: #343a40;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .btn-custom {
+      background-color: #007bff;
+      color: #ffffff;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-custom:hover {
+      background-color: #0056b3;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .btn-danger-custom {
+      background-color: #dc3545;
+      color: #ffffff;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.8rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-danger-custom:hover {
+      background-color: #c82333;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .btn-secondary-custom {
+      background-color: #6c757d;
+      color: #ffffff;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-secondary-custom:hover {
+      background-color: #5a6268;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .logout-button {
+      background-color: #dc3545;
+      color: #ffffff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      width: 100%;
+      text-align: center;
+      display: inline-block;
+      margin-top: 20px;
+    }
+
+    .logout-button:hover {
+      background-color: #c82333;
+      transform: translateY(-2px);
+      color: #ffffff;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    /* ナビゲーションバーのスタイル */
+    .navbar-custom {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .navbar-custom .navbar-brand,
+    .navbar-custom .nav-link {
+      color: #ffffff;
+    }
+
+    .navbar-custom .nav-link:hover {
+      color: #cccccc;
+    }
+
+    /* レスポンシブデザイン調整（オプション） */
+    @media (max-width: 768px) {
+      .page-header h1 {
+        font-size: 2rem;
+      }
+
+      .btn-custom, .btn-secondary-custom, .logout-button {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+      }
+
+      .btn-danger-custom {
+        padding: 4px 8px;
+        font-size: 0.8rem;
+      }
+
+      .table-responsive {
+        overflow-x: auto;
+      }
+    }
+
+    /* テーブルのスタイル調整 */
+    table {
+      width: 100%;
+    }
+
+    th, td {
+      vertical-align: middle !important;
+      text-align: center;
+    }
+
+    /* フォーム要素のスタイル調整 */
+    .form-control-inline {
+      width: 100%;
+      display: inline-block;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <!-- ナビゲーションバー -->
+  <nav class="navbar navbar-expand-lg navbar-dark fixed-top navbar-custom">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('auth.index') }}">金融ダッシュボード</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+              aria-controls="navbarNav" aria-expanded="false" aria-label="ナビゲーションの切替">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('auth.logout') }}">ログアウト</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- メインコンテンツ -->
+  <div class="main-container container">
+    <!-- ページヘッダー -->
+    <div class="page-header">
+      <h1>ユーザー編集 (管理者のみ)</h1>
+    </div>
+
+    <!-- エラーメッセージや成功メッセージの表示 -->
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show alert-custom" role="alert">
+      {{ error }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="alert alert-success alert-dismissible fade show alert-custom" role="alert">
+      {{ success }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+    </div>
+    {% endif %}
+
+    <!-- ユーザー編集テーブル -->
+    <div class="section">
+      <h2>ユーザー一覧</h2>
+      <div class="table-responsive">
+        <table class="table table-striped table-hover">
+          <thead class="table-dark">
+            <tr>
+              <th>ユーザーID</th>
+              <th>ユーザー名</th>
+              <th>ロール</th>
+              <th>所属期</th>
+              <th>更新</th>
+              <th>削除</th>
+              <th>パスワード変更</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in all_users %}
+            <tr>
+              <td>{{ u.user_id }}</td>
+
+              <!-- 更新フォーム -->
+              <td>
+                <form method="POST" action="{{ url_for('auth.users_edit') }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="update">
+                  <input type="hidden" name="user_id" value="{{ u.user_id }}">
+
+                  <input type="text" class="form-control form-control-inline" name="new_user_name" value="{{ u.user_name }}" required>
+              </td>
+              <td>
+                  <select class="form-select form-control-inline" name="new_role" required>
+                    <option value="user" {% if u.role=='user' %}selected{% endif %}>user</option>
+                    <option value="admin" {% if u.role=='admin' %}selected{% endif %}>admin</option>
+                  </select>
+              </td>
+              <td>
+                  <select class="form-select form-control-inline" name="new_generation_id">
+                    <option value="">(なし)</option>
+                    {% for gen in generation_list %}
+                      <option value="{{ gen.generation_id }}"
+                        {% if u.generation_id == gen.generation_id %}selected{% endif %}>
+                        {{ gen.generation_name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+              </td>
+              <td>
+                  <button type="submit" class="btn-custom btn-sm"><i class="bi bi-pencil-square"></i> 更新</button>
+                </form>
+              </td>
+
+              <!-- 削除フォーム -->
+              <td>
+                <form method="POST" action="{{ url_for('auth.users_edit') }}" style="display:inline;"
+                      onsubmit="return confirm('本当に削除しますか？');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="user_id" value="{{ u.user_id }}">
+                  <button type="submit" class="btn-danger-custom btn-sm"><i class="bi bi-trash"></i> 削除</button>
+                </form>
+              </td>
+
+              <!-- パスワード変更フォーム -->
+              <td>
+                <form method="POST" action="{{ url_for('auth.users_edit') }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="change_pw">
+                  <input type="hidden" name="user_id" value="{{ u.user_id }}">
+                  <div class="input-group input-group-sm">
+                    <input type="password" class="form-control" name="new_pw" placeholder="新PW" required>
+                    <button type="submit" class="btn btn-warning btn-sm"><i class="bi bi-key-fill"></i> 変更</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ダッシュボードに戻るリンク -->
+    <div class="mt-4 text-center">
+      <a href="{{ url_for('auth.unified_dashboard') }}" class="btn btn-secondary-custom">
+        <i class="bi bi-arrow-left-circle"></i> ダッシュボードに戻る
+      </a>
+    </div>
+
+    <!-- ログアウトボタン（ナビゲーションバーと同様にリンクとして） -->
+    <div class="mt-4 text-center">
+      <a href="{{ url_for('auth.logout') }}" class="logout-button"><i class="bi bi-box-arrow-right"></i> ログアウト</a>
+    </div>
+  </div>
+
+  <!-- Bootstrap JSの読み込み（オプション） -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

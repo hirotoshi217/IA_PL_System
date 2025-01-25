@@ -1,0 +1,263 @@
+<!-- templates/register.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ユーザー登録</title>
+  <!-- Bootstrap CSSの読み込み -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fontsの読み込み（オプション） -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Bootstrap Iconsの読み込み（オプション） -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body {
+      /* 背景画像の設定 */
+      background-image: url("{{ url_for('static', filename='images/finance-background.jpg') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      min-height: 100vh;
+      font-family: 'Roboto', sans-serif;
+      position: relative;
+      margin: 0;
+      padding-top: 56px; /* ナビゲーションバーの高さ分の余白 */
+    }
+
+    /* オーバーレイの追加 */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.3); /* 半透明の黒 */
+      z-index: 1;
+    }
+
+    .main-container {
+      position: relative;
+      z-index: 2; /* オーバーレイの上に表示 */
+      padding: 30px 15px;
+    }
+
+    .page-header {
+      color: #ffffff;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .page-header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+    }
+
+    .form-section {
+      background-color: rgba(255, 255, 255, 0.9);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .form-section h2 {
+      color: #343a40;
+      font-weight: 700;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .btn-custom {
+      background-color: #007bff;
+      color: #ffffff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-custom:hover {
+      background-color: #0056b3;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .btn-secondary-custom {
+      background-color: #6c757d;
+      color: #ffffff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-secondary-custom:hover {
+      background-color: #5a6268;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .logout-button {
+      background-color: #dc3545;
+      color: #ffffff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      width: 100%;
+      text-align: center;
+      display: inline-block;
+      margin-top: 20px;
+    }
+
+    .logout-button:hover {
+      background-color: #c82333;
+      transform: translateY(-2px);
+      color: #ffffff;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    /* ナビゲーションバーのスタイル */
+    .navbar-custom {
+      background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .navbar-custom .navbar-brand,
+    .navbar-custom .nav-link {
+      color: #ffffff;
+    }
+
+    .navbar-custom .nav-link:hover {
+      color: #cccccc;
+    }
+
+    /* レスポンシブデザイン調整（オプション） */
+    @media (max-width: 768px) {
+      .page-header h1 {
+        font-size: 2rem;
+      }
+
+      .btn-custom, .btn-secondary-custom, .logout-button {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+      }
+    }
+
+    /* フォームのスタイル調整 */
+    .form-label {
+      font-weight: 500;
+      color: #343a40;
+    }
+
+    .form-control, .form-select {
+      border-radius: 5px;
+    }
+
+    .alert-custom {
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <!-- ナビゲーションバー -->
+  <nav class="navbar navbar-expand-lg navbar-dark fixed-top navbar-custom">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('auth.index') }}">金融ダッシュボード</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+              aria-controls="navbarNav" aria-expanded="false" aria-label="ナビゲーションの切替">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('auth.logout') }}">ログアウト</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- メインコンテンツ -->
+  <div class="main-container container">
+    <!-- ページヘッダー -->
+    <div class="page-header">
+      <h1>ユーザー登録 (管理者専用)</h1>
+    </div>
+
+    <!-- フォームセクション -->
+    <div class="form-section">
+      <h2>新規ユーザーの登録</h2>
+
+      <!-- エラーメッセージや成功メッセージの表示 -->
+      {% if error %}
+      <div class="alert alert-danger alert-dismissible fade show alert-custom" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+      </div>
+      {% endif %}
+
+      {% if success %}
+      <div class="alert alert-success alert-dismissible fade show alert-custom" role="alert">
+        {{ success }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="閉じる"></button>
+      </div>
+      {% endif %}
+
+      <!-- ユーザー登録フォーム -->
+      <form method="POST" action="{{ url_for('auth.register') }}">
+        <!-- CSRF token -->
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3">
+          <label for="register_username" class="form-label">ユーザー名:</label>
+          <input type="text" class="form-control" id="register_username" name="register_username" placeholder="ユーザー名を入力" required>
+        </div>
+
+        <div class="mb-3">
+          <label for="register_password" class="form-label">パスワード:</label>
+          <input type="password" class="form-control" id="register_password" name="register_password" placeholder="パスワードを入力" required>
+        </div>
+
+        <div class="mb-3">
+          <label for="register_generation_id" class="form-label">所属期:</label>
+          <select class="form-select" id="register_generation_id" name="register_generation_id" required>
+            <option value="" selected disabled>選択してください</option>
+            {% for g in generation_list %}
+              <option value="{{ g.generation_id }}">{{ g.generation_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="text-center">
+          <button type="submit" class="btn-custom"><i class="bi bi-person-plus-fill"></i> 登録</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ダッシュボードに戻るリンク -->
+    <div class="mt-4 text-center">
+      <a href="{{ url_for('auth.unified_dashboard') }}" class="btn btn-secondary-custom">
+        <i class="bi bi-arrow-left-circle"></i> ダッシュボードに戻る
+      </a>
+    </div>
+
+    <!-- ログアウトボタン（ナビゲーションバーと同様にリンクとして） -->
+    <div class="mt-4 text-center">
+      <a href="{{ url_for('auth.logout') }}" class="logout-button"><i class="bi bi-box-arrow-right"></i> ログアウト</a>
+    </div>
+  </div>
+
+  <!-- Bootstrap JSの読み込み（オプション） -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

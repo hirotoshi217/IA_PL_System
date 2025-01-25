@@ -1,0 +1,112 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ログイン前TOP</title>
+  <!-- Bootstrap CSSの読み込み -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fontsの読み込み（オプション） -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      /* 背景画像の設定 */
+      background-image: url("{{ url_for('static', filename='images/finance-background.jpg') }}");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Roboto', sans-serif;
+      position: relative;
+      margin: 0;
+    }
+
+    /* オーバーレイの追加 */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5); /* 半透明の黒 */
+      z-index: 1;
+    }
+
+    .welcome-container {
+      position: relative;
+      z-index: 2; /* オーバーレイの上に表示 */
+      background-color: rgba(255, 255, 255, 0.85);
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+      text-align: center;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .welcome-container h1 {
+      margin-bottom: 20px;
+      color: #343a40;
+      font-weight: 700;
+      font-size: 2.5rem;
+    }
+
+    .welcome-container p {
+      margin-bottom: 30px;
+      color: #6c757d;
+      font-size: 1.1rem;
+    }
+
+    .btn-login {
+      background-color: #007bff;
+      color: #ffffff;
+      padding: 12px 24px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+
+    .btn-login:hover {
+      background-color: #0056b3;
+      transform: translateY(-2px);
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    /* レスポンシブデザイン調整（オプション） */
+    @media (max-width: 576px) {
+      .welcome-container {
+        padding: 20px;
+      }
+
+      .welcome-container h1 {
+        font-size: 2rem;
+      }
+
+      .welcome-container p {
+        font-size: 1rem;
+      }
+
+      .btn-login {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="welcome-container">
+    <h1>ようこそ！</h1>
+    <p>このサイトへアクセスするには、まずログインしてください。</p>
+    <a href="{{ url_for('auth.login') }}" class="btn-login">ログイン画面へ</a>
+  </div>
+  
+  <!-- Bootstrap JSの読み込み（オプション） -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
