@@ -35,7 +35,11 @@ def create_app():
     def root_index():
         # / に来たら /auth/ にリダイレクト (オプション)
         return redirect(url_for('auth.index'))
+    @app.route('/db-info')
+    def db_info():
+        return f"Connected to: {app.config['SQLALCHEMY_DATABASE_URI']}"
 
+    
     with app.app_context():
         db.create_all()
         _ensure_admin_account()
