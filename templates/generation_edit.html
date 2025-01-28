@@ -190,7 +190,7 @@
   <nav class="navbar navbar-expand-lg navbar-dark fixed-top navbar-custom">
     <div class="container-fluid">
       <a class="navbar-brand" href="{{ url_for('auth.index') }}">金融ダッシュボード</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
               aria-controls="navbarNav" aria-expanded="false" aria-label="ナビゲーションの切替">
         <span class="navbar-toggler-icon"></span>
       </button>
@@ -220,6 +220,8 @@
             <tr>
               <th>期ID</th>
               <th>期名称</th>
+              <!-- --- 変更箇所: 更新有効/無効カラムを追加 --- -->
+              <th>更新有効?</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -228,6 +230,14 @@
             <tr>
               <td>{{ gen.generation_id }}</td>
               <td>{{ gen.generation_name }}</td>
+              <!-- ここで activeness を表示 -->
+              <td>
+                {% if gen.activeness == 1 %}
+                  <span class="text-success">有効</span>
+                {% else %}
+                  <span class="text-muted">無効</span>
+                {% endif %}
+              </td>
               <td>
                 <!-- 削除フォーム -->
                 <form method="POST" action="{{ url_for('trade.generation_edit') }}" style="display:inline;"
@@ -238,6 +248,26 @@
                   <button type="submit" class="btn-danger-custom">
                     <i class="bi bi-trash"></i> 削除
                   </button>
+                </form>
+
+                <!-- --- 変更箇所: activeness 更新用フォーム (有効->無効/無効->有効) --- -->
+                <form method="POST" action="{{ url_for('trade.generation_edit') }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="update_activeness">
+                  <input type="hidden" name="target_generation_id" value="{{ gen.generation_id }}">
+                  {% if gen.activeness == 1 %}
+                    <!-- 有効 -> 無効にする -->
+                    <input type="hidden" name="new_activeness" value="0">
+                    <button type="submit" class="btn btn-warning btn-sm">
+                      <i class="bi bi-toggle-off"></i> 無効にする
+                    </button>
+                  {% else %}
+                    <!-- 無効 -> 有効にする -->
+                    <input type="hidden" name="new_activeness" value="1">
+                    <button type="submit" class="btn btn-success btn-sm">
+                      <i class="bi bi-toggle-on"></i> 有効にする
+                    </button>
+                  {% endif %}
                 </form>
               </td>
             </tr>
@@ -251,7 +281,6 @@
     <div class="section">
       <h2>新規期の追加</h2>
       <form method="POST" action="{{ url_for('trade.generation_edit') }}">
-        <!-- CSRF token (hidden) -->
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="add">
 
