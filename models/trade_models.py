@@ -1,7 +1,7 @@
 # models/trade_models.py
+
 from datetime import datetime
 from models import db
-
 
 class Generation(db.Model):
     __tablename__ = 'generations'
@@ -9,6 +9,8 @@ class Generation(db.Model):
     generation_name = db.Column(db.String(50), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # --- 変更箇所: activenessカラムを追加 (0=非アクティブ,1=アクティブ) ---
+    activeness = db.Column(db.Integer, nullable=False, default=1)
 
 class Group(db.Model):
     __tablename__ = 'groups'
