@@ -58,3 +58,7 @@ class PLHistory(db.Model):
 
     date = db.Column(db.Date, default=datetime.utcnow)
     total_pl = db.Column(db.Float, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('generation_id', 'group_id', 'date', name='uq_plhistory_group_date'),
+    )
