@@ -491,6 +491,134 @@ def group_bs_edit(generation_id, group_id):
                            pl_history_list=pl_history_list)
 
 
+@trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/plhistory/new', methods=['POST'])
+@login_required
+def new_plhistory(generation_id, group_id):
+    # 1) 権限チェック
+    if current_user.role != 'admin' and current_user.generation_id != generation_id:
+        return "アクセス権がありません", 403
+
+    # 2) POSTフォームから値を取得
+    new_date_str = request.form.get('new_date')
+    new_pl_str = request.form.get('new_total_pl')
+    if not new_date_str or not new_pl_str:
+        flash("日付やPLが未入力です", "error")
+        return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+    # 3) 未来日チェック + 数値変換
+    try:
+        dt = datetime.strptime(new_date_str, '%Y-%m-%d').date()
+        if dt > datetime.now().date():
+            flash("未来の日付は登録できません", "error")
+            return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+        val_pl = float(new_pl_str)
+    except ValueError:
+        flash("日付または数値が不正です", "error")
+        return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+    # 4) もし同じ日付が既にあるなら「上書き」する (oldを塗り替える)
+    existing_rec = PLHistory.query.filter_by(
+        generation_id=generation_id,
+        group_id=group_id,
+        date=dt
+    ).first()
+    if existing_rec:
+        existing_rec.total_pl = val_pl
+        db.session.commit()
+        flash("同じ日付があったため上書きしました", "success")
+        return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+    # 5) 新規追加
+    new_rec = PLHistory(
+        generation_id=generation_id,
+        group_id=group_id,
+        date=dt,
+        total_pl=val_pl
+    )
+    db.session.add(new_rec)
+    db.session.commit()
+
+    flash("PL履歴を追加しました", "success")
+    return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+
+@trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/plhistory/<int:pl_id>/update', methods=['POST'])
+@login_required
+def update_plhistory(generation_id, group_id, pl_id):
+    # 権限チェック
+    if current_user.role != 'admin' and current_user.generation_id != generation_id:
+        return "アクセス権がありません", 403
+
+    # 該当PLHistoryを取得
+    pl_rec = PLHistory.query.filter_by(
+        generation_id=generation_id,
+        group_id=group_id,
+        pl_history_id=pl_id
+    ).first()
+    if not pl_rec:
+        abort(404, "該当するPL履歴が見つかりません")
+
+    # フォーム入力
+    new_date_str = request.form.get('new_date')
+    new_pl_str = request.form.get('new_total_pl')
+    if not new_date_str or not new_pl_str:
+        flash("日付またはPLが未入力です", "error")
+        return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+    try:
+        dt = datetime.strptime(new_date_str, '%Y-%m-%d').date()
+        if dt > datetime.now().date():
+            flash("未来の日付は登録できません", "error")
+            return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+        val_pl = float(new_pl_str)
+    except ValueError:
+        flash("日付や数値が不正です", "error")
+        return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+    # 「同じ日付が既にある」&& 「それが自分とは別レコード」 なら上書きの扱い
+    if dt != pl_rec.date:
+        conflict = PLHistory.query.filter_by(
+            generation_id=generation_id,
+            group_id=group_id,
+            date=dt
+        ).first()
+        if conflict and conflict.pl_history_id != pl_id:
+            # 古いレコード(conflict)を消して pl_rec に差し替えるイメージ
+            db.session.delete(conflict)
+
+    # 上書き
+    pl_rec.date = dt
+    pl_rec.total_pl = val_pl
+
+    db.session.commit()
+    flash("PL履歴を更新しました", "success")
+    return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+
+@trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/plhistory/<int:pl_id>/delete', methods=['GET'])
+@login_required
+def delete_plhistory(generation_id, group_id, pl_id):
+    if current_user.role != 'admin' and current_user.generation_id != generation_id:
+        return "アクセス権がありません", 403
+
+    pl_rec = PLHistory.query.filter_by(
+        generation_id=generation_id,
+        group_id=group_id,
+        pl_history_id=pl_id
+    ).first()
+    if not pl_rec:
+        abort(404, "該当PL履歴がありません")
+
+    db.session.delete(pl_rec)
+    db.session.commit()
+    flash("PL履歴を削除しました", "success")
+    return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
+
+
+
+
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/holding/<int:holding_id>/update', methods=['POST'])
 @login_required
 def update_holding(generation_id, group_id, holding_id):
