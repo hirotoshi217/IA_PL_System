@@ -478,12 +478,17 @@ def group_bs_edit(generation_id, group_id):
     holdings = Holding.query.filter_by(generation_id=generation_id, group_id=group_id).all()
     solds = Sold.query.filter_by(generation_id=generation_id, group_id=group_id).all()
 
+    pl_history_list = PLHistory.query.filter_by(generation_id=generation_id, group_id=group_id)\
+                                     .order_by(PLHistory.date).all()
+    
+    
     return render_template('group_BS_edit.html',
                            generation_id=generation_id,
                            generation_name=gen.generation_name,
                            group=group_obj,
                            holdings=holdings,
-                           solds=solds)
+                           solds=solds,
+                           pl_history_list=pl_history_list)
 
 
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/holding/<int:holding_id>/update', methods=['POST'])
