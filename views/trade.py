@@ -51,25 +51,29 @@ def generation_edit():
                 db.session.commit()
             return redirect(url_for('auth.unified_dashboard'))
 
+        # --- 変更箇所: activeness の更新処理を追加 ---
+        elif action == 'update_activeness':
+            gen_id = request.form.get('target_generation_id')
+            new_activeness = request.form.get('new_activeness')
+            gen = Generation.query.get(gen_id)
+            if gen and new_activeness is not None:
+                gen.activeness = int(new_activeness)
+                db.session.commit()
+            return redirect(url_for('trade.generation_edit'))
+
         return "不正なアクション", 400
     else:
         all_generations = Generation.query.all()
         return render_template('generation_edit.html', all_generations=all_generations)
 
 
-@trade_bp.route('/generation/<int:generation_id>/groups')
+@trade_bp.route('/generation/<int:generation_id>/groups', methods=['GET'])
 @login_required
 def generation_groups(generation_id):
     """
     ある期(generation_id)のグループ一覧 + 全グループ分のPL推移グラフ
-    ★ 修正ここ: 閲覧は制限しない(誰でも見られる)
-    (従来は "if current_user.generation_id != generation_id: return 403" していたが削除)
     """
-
-    # 期を取得
     gen = Generation.query.get_or_404(generation_id)
-
-    # 期に属するグループ一覧
     groups = Group.query.filter_by(generation_id=generation_id).order_by(Group.group_id).all()
 
     # 各グループの最新PL
@@ -194,14 +198,12 @@ def generation_groups_edit(generation_id):
 def group_detail(generation_id, group_id):
     """
     グループ詳細(保有銘柄一覧, 売却履歴, PL推移など)
-    ★ 修正ここ: 閲覧のみの制限を外す(他期も見られる)
     """
 
     group_obj = Group.query.filter_by(generation_id=generation_id, group_id=group_id).first()
     if not group_obj:
         abort(404, "Group not found in this generation")
 
-    # 最新の合計PL
     latest_pl = PLHistory.query.filter_by(
         generation_id=generation_id,
         group_id=group_id
@@ -213,7 +215,6 @@ def group_detail(generation_id, group_id):
     pl_history = PLHistory.query.filter_by(generation_id=generation_id, group_id=group_id)\
                                 .order_by(PLHistory.date).all()
 
-    # グラフ用データの準備
     chart_dates = [rec.date.strftime('%Y-%m-%d') for rec in pl_history]
     chart_pl = [rec.total_pl for rec in pl_history]
 
@@ -233,10 +234,9 @@ def group_detail(generation_id, group_id):
 def bs_input(generation_id, group_id):
     """
     買い/売り入力ページ
-    ★ 修正ここ: adminか、あるいはuser.generation_id==generation_id のときのみOK
+    adminか、あるいはuserであれば同じgeneration_idの場合にのみ許可
     """
     if current_user.role != 'admin':
-        # userの場合: bs_inputは自分の期だけ操作可
         if current_user.generation_id != generation_id:
             return "アクセス権がありません", 403
 
@@ -312,7 +312,6 @@ def buy_handler(generation_id, group_id, trade_date, ticker, quantity, price):
         holding.current_price = price
         holding.current_pl = (price - new_buy_price) * new_qty - FIXED_COST
     else:
-        # 新規
         ticker_name = "Unknown"
         try:
             ticker_name = get_ticker_name_from_api(ticker)
@@ -396,7 +395,11 @@ def get_ticker_name_from_api(ticker: str) -> str:
 @trade_bp.cli.command('update_prices')
 def update_prices():
     """株価更新"""
-    holdings = Holding.query.all()
+    # --- 変更箇所: activeな期(Generation.activeness==1) のみ対象にする ---
+    holdings = (Holding.query
+                .join(Generation, Holding.generation_id == Generation.generation_id)
+                .filter(Generation.activeness == 1)
+                .all())
     for h in holdings:
         try:
             data = yf.download(h.ticker, period="1d", interval="1h")
@@ -420,7 +423,11 @@ def update_prices():
 @trade_bp.cli.command('update_total_pl')
 def update_total_pl():
     """日次で全グループの合計PLをPLHistoryに記録"""
-    groups = Group.query.all()
+    # --- 変更箇所: activeな期のみグループを取得する ---
+    groups = (Group.query
+              .join(Generation, Group.generation_id == Generation.generation_id)
+              .filter(Generation.activeness == 1)
+              .all())
     today = datetime.now(timezone.utc).date()
     for g in groups:
         # 含み損益
@@ -459,7 +466,6 @@ def group_bs_edit(generation_id, group_id):
     """
     保有銘柄と売却済み銘柄を編集するページ
     """
-    # アクセス権の確認: admin または user が自分の generation_id の場合
     if current_user.role != 'admin' and current_user.generation_id != generation_id:
         return "アクセス権がありません", 403
 
@@ -467,7 +473,6 @@ def group_bs_edit(generation_id, group_id):
     if not group_obj:
         abort(404, "Group not found in this generation")
 
-    # Generation オブジェクトを取得
     gen = Generation.query.get_or_404(generation_id)
 
     holdings = Holding.query.filter_by(generation_id=generation_id, group_id=group_id).all()
@@ -475,20 +480,15 @@ def group_bs_edit(generation_id, group_id):
 
     return render_template('group_BS_edit.html',
                            generation_id=generation_id,
-                           generation_name=gen.generation_name,  # 修正箇所
+                           generation_name=gen.generation_name,
                            group=group_obj,
                            holdings=holdings,
                            solds=solds)
 
 
-# 保有銘柄の更新
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/holding/<int:holding_id>/update', methods=['POST'])
 @login_required
 def update_holding(generation_id, group_id, holding_id):
-    """
-    保有銘柄を更新する処理
-    """
-    # アクセス権の確認
     if current_user.role != 'admin' and current_user.generation_id != generation_id:
         return "アクセス権がありません", 403
 
@@ -496,7 +496,6 @@ def update_holding(generation_id, group_id, holding_id):
     if not holding:
         abort(404, "Holding not found")
 
-    # フォームからデータ取得
     try:
         quantity = float(request.form.get('quantity'))
         buy_price = float(request.form.get('buy_price'))
@@ -505,7 +504,6 @@ def update_holding(generation_id, group_id, holding_id):
         flash('数量、買価格、現在価格は数値を入力してください', 'error')
         return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
 
-    # データの更新
     holding.quantity = quantity
     holding.buy_price = buy_price
     holding.current_price = current_price
@@ -516,14 +514,9 @@ def update_holding(generation_id, group_id, holding_id):
     return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
 
 
-# 保有銘柄の削除
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/holding/<int:holding_id>/delete', methods=['GET'])
 @login_required
 def delete_holding(generation_id, group_id, holding_id):
-    """
-    保有銘柄を削除する処理
-    """
-    # アクセス権の確認
     if current_user.role != 'admin' and current_user.generation_id != generation_id:
         return "アクセス権がありません", 403
 
@@ -537,14 +530,9 @@ def delete_holding(generation_id, group_id, holding_id):
     return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
 
 
-# 売却済み銘柄の更新
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/sold/<int:sold_id>/update', methods=['POST'])
 @login_required
 def update_sold(generation_id, group_id, sold_id):
-    """
-    売却済み銘柄を更新する処理
-    """
-    # アクセス権の確認
     if current_user.role != 'admin' and current_user.generation_id != generation_id:
         return "アクセス権がありません", 403
 
@@ -552,7 +540,6 @@ def update_sold(generation_id, group_id, sold_id):
     if not sold:
         abort(404, "Sold record not found")
 
-    # フォームからデータ取得
     try:
         sold_quantity = float(request.form.get('sold_quantity'))
         buy_price = float(request.form.get('buy_price'))
@@ -563,7 +550,6 @@ def update_sold(generation_id, group_id, sold_id):
         flash('数量、買価格、売価格、売却日付は正しい形式で入力してください', 'error')
         return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
 
-    # データの更新
     sold.sold_quantity = sold_quantity
     sold.buy_price = buy_price
     sold.sell_price = sell_price
@@ -575,14 +561,9 @@ def update_sold(generation_id, group_id, sold_id):
     return redirect(url_for('trade.group_bs_edit', generation_id=generation_id, group_id=group_id))
 
 
-# 売却済み銘柄の削除
 @trade_bp.route('/generation/<int:generation_id>/group/<int:group_id>/sold/<int:sold_id>/delete', methods=['GET'])
 @login_required
 def delete_sold(generation_id, group_id, sold_id):
-    """
-    売却済み銘柄を削除する処理
-    """
-    # アクセス権の確認
     if current_user.role != 'admin' and current_user.generation_id != generation_id:
         return "アクセス権がありません", 403
 
