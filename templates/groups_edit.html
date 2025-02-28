@@ -197,23 +197,6 @@
   </style>
 </head>
 <body>
-  <!-- ナビゲーションバー -->
-  <nav class="navbar navbar-expand-lg navbar-dark fixed-top navbar-custom">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('auth.index') }}">金融ダッシュボード</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
-              aria-controls="navbarNav" aria-expanded="false" aria-label="ナビゲーションの切替">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <a class="nav-link" href="{{ url_for('auth.logout') }}">ログアウト</a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </nav>
 
   <!-- メインコンテンツ -->
   <div class="main-container container">
