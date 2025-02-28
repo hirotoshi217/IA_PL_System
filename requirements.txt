@@ -181,5 +181,5 @@ wheel==0.44.0
 wrapt==1.16.0
 WTForms==3.2.1
 xgboost==2.1.1
-yfinance==0.2.49
+yfinance==0.2.54
 zope.interface==7.0.1
