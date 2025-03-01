@@ -1022,60 +1022,73 @@ def get_previous_day_entry(pl_data, today_str):
 
 @trade_bp.cli.command('update_pl')
 def update_pl():
-    """
-    定時更新処理：アクティブな期 (Generation.activeness == 1) の各銘柄について、
-    当日エントリの close_price を最新の値に更新し、その結果 holding_pl を再計算する。
-    更新対象は、当日の PLRecord エントリが存在し、かつ holding_quantity > 0 のものとする。
-    """
+    import logging
+    import pytz
+    from datetime import datetime
+    # ※必要なモジュールのインポートがされているか確認してください
+
+    logging.info("update_pl: コマンド開始")
+    
     # 東京時間で当日の日付を取得
-    tokyo_tz = pytz.timezone("Asia/Tokyo")
-    today = datetime.now(tokyo_tz).date()
-    today_str = today.strftime("%Y%m%d")
-    logging.info(f"update_pl: 更新開始 - 当日 {today_str}")
+    try:
+        tokyo_tz = pytz.timezone("Asia/Tokyo")
+        today = datetime.now(tokyo_tz).date()
+        today_str = today.strftime("%Y%m%d")
+        logging.info(f"update_pl: 当日の日付取得成功 - {today_str}")
+    except Exception as e:
+        logging.error(f"update_pl: 当日の日付取得失敗: {str(e)}")
+        return
 
-    # アクティブな期に属する全ての PLRecord を取得
-    pl_records = (
-        PLRecord.query
-        .join(Generation, PLRecord.generation_id == Generation.generation_id)
-        .filter(Generation.activeness == 1)
-        .all()
-    )
-    logging.info(f"update_pl: 更新対象のPLRecord数: {len(pl_records)}")
+    # クエリ前のログ
+    logging.info("update_pl: PLRecordのクエリ開始")
+    try:
+        pl_records = (
+            PLRecord.query
+            .join(Generation, PLRecord.generation_id == Generation.generation_id)
+            .filter(Generation.activeness == 1)
+            .all()
+        )
+    except Exception as e:
+        logging.error(f"update_pl: PLRecordクエリ失敗: {str(e)}")
+        return
 
+    # クエリ結果のログ
+    logging.info(f"update_pl: クエリ完了 - 更新対象のPLRecord数: {len(pl_records)}")
+
+    # ループ開始前のログ
+    logging.info("update_pl: PLRecordの処理開始")
     for record in pl_records:
-        ticker = fix_ticker(record.ticker)  # まだ整形済みでない可能性を考慮
-        generation_id = record.generation_id
-        # 既存の pl_data（辞書型、キーは "YYYYMMDD"）を取得
-        pl_data = record.pl_data if record.pl_data else {}
-
-        # 当日エントリが存在しない場合、前日のエントリ（holding_quantity > 0）をコピーして作成
-        if today_str not in pl_data:
-            prev_entry = get_previous_day_entry(pl_data, today_str)
-            pl_data[today_str] = prev_entry.copy()
-            logging.info(f"update_pl: {ticker} (Gen {generation_id}): 当日エントリが無かったため前日コピーを作成")
-            
-        # 当日エントリを取得し、最新の close_price を取得して更新
-        entry = pl_data[today_str]
         try:
+            # 各レコードごとに固有の情報をログに出力
+            logging.info(f"update_pl: レコード開始 - ID: {record.pl_record_id}, Ticker: {record.ticker}")
+            
+            ticker = fix_ticker(record.ticker)  # 整形処理
+            generation_id = record.generation_id
+            pl_data = record.pl_data if record.pl_data else {}
+    
+            if today_str not in pl_data:
+                prev_entry = get_previous_day_entry(pl_data, today_str)
+                pl_data[today_str] = prev_entry.copy()
+                logging.info(f"update_pl: {ticker} (Gen {generation_id}): 当日エントリ無し - 前日コピー作成")
+                
+            entry = pl_data[today_str]
             old_close = entry.get("close_price", None)
             new_close = get_close_price_for_day(ticker, today)
             entry["close_price"] = new_close
 
-            # holding_pl = (new_close - transaction_price) * holding_quantity
             transaction_price = entry.get("transaction_price", 0)
             holding_quantity = entry.get("holding_quantity", 0)
             new_holding_pl = (new_close - transaction_price) * holding_quantity
             entry["holding_pl"] = new_holding_pl
 
-            # 更新後のエントリを保存
             pl_data[today_str] = entry
             record.pl_data = pl_data
             db.session.add(record)
-
-            logging.info(f"update_pl: {ticker} (Gen {generation_id}): old close_price={old_close}, new close_price={new_close}")
+    
+            logging.info(f"update_pl: {ticker} (Gen {generation_id}): old_close={old_close}, new_close={new_close}")
             logging.info(f"update_pl: {ticker}: transaction_price={transaction_price}, holding_quantity={holding_quantity}, new holding_pl={new_holding_pl}")
         except Exception as e:
-            logging.error(f"update_pl: {ticker} (Gen {generation_id}): エラー発生: {str(e)}")
+            logging.error(f"update_pl: レコード処理中エラー (Ticker {record.ticker}): {str(e)}")
             continue
 
     try:
@@ -1083,5 +1096,5 @@ def update_pl():
         logging.info("update_pl: 全てのPLRecord更新完了")
     except Exception as e:
         db.session.rollback()
-        logging.error(f"update_pl: コミットエラー: {str(e)}")
+        logging.error(f"update_pl: DBコミットエラー: {str(e)}")
 
