@@ -12,6 +12,8 @@ from werkzeug.security import generate_password_hash  # 追加
 
 def create_app():
     app = Flask(__name__)
+    app.config.from_object('config.DevelopmentConfig')
+
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'SUPER_SECRET_KEY')
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
