@@ -71,6 +71,6 @@ class PLRecord(db.Model):
     #   "20230502": { ... },
     #   ...
     # }
-    pl_data = db.Column(db.JSON, nullable=False, default={})
+    pl_data = db.Column(db.JSON, nullable=False, default=dict)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
