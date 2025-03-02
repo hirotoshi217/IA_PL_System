@@ -439,113 +439,125 @@ def delete_request(request_id):
     return redirect(url_for('trade.trade_request', generation_id=gen_id))
 
 
-@trade_bp.route('/trade/accept', methods=['GET', 'POST'])
-@login_required
-def trade_accept():
-    if current_user.role != 'admin':
-        abort(403, "アクセス権がありません")
+def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approval):
+    """
+    バックデート再計算：対象日(start_date)から本日までの各営業日に対して、
+    初期エントリ（前日のpl_dataまたは初期値）を基に、当日発生の承認取引を適用し、
+    当日の終値を用いてPL（holding_pl, sold_pl）を再計算する。
 
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'approve':
-            req_id = request.form.get('request_id')
-            trade_req = Request.query.get(req_id)
-            if not trade_req:
-                flash("申請データが見つかりません", "error")
-                return redirect(url_for('trade.trade_accept'))
-            try:
-                transaction_price = float(request.form.get('transaction_price'))
-                transaction_quantity = float(request.form.get('transaction_quantity'))
-                transaction_date_str = request.form.get('transaction_date')
-                transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-            except ValueError:
-                print("取引情報の形式が不正です", "error0")
-                return redirect(url_for('trade.trade_accept'))
+    パラメータ:
+      ticker: 銘柄（整形済み）
+      generation_id, group_id: 期およびグループのID
+      start_date: datetime型、再計算開始日（対象日）
+      new_approval: 新たに承認された取引（Acceptオブジェクト、未コミット状態も含む）
 
-            approved_trade = Accept(
-                ticker=trade_req.ticker,
-                generation_id=trade_req.generation_id,
-                group_id=trade_req.group_id,
-                request_type=trade_req.request_type,
-                request_date=trade_req.requested_date,
-                transaction_price=transaction_price,
-                transaction_quantity=transaction_quantity,
-                transaction_date=transaction_date
-            )
-            db.session.add(approved_trade)
-            try:
-                recalc_pl_from_date(approved_trade.ticker, 
-                                    approved_trade.generation_id,
-                                    approved_trade.group_id,
-                                    approved_trade.transaction_date,
-                                    approved_trade
-                                    )
-            except Exception as e:
-                db.session.rollback()
-                print(f"承認処理エラー: {str(e)}", "error1")
-                return redirect(url_for('trade.trade_accept'))
-            db.session.delete(trade_req)
-            db.session.commit()
-            flash("申請が承認されました", "success")
-            return redirect(url_for('trade.trade_accept'))
+    ※ この関数は、get_trading_days(), get_pl_record(), create_new_pl_record(),
+        get_accepts(), get_close_price_for_day(), get_previous_day_entry(), update_entry_with_approval(),
+        update_pl_record() などの補助関数および FIXED_FEE 定数に依存しています。
+    """
 
-        elif action == 'update':
-            approved_id = request.form.get('approved_id')
-            approved_trade = Accept.query.get(approved_id)
-            if not approved_trade:
-                flash("承認済みデータが見つかりません", "error2")
-                return redirect(url_for('trade.trade_accept'))
-            try:
-                transaction_price = float(request.form.get('transaction_price'))
-                transaction_quantity = float(request.form.get('transaction_quantity'))
-                transaction_date_str = request.form.get('transaction_date')
-                transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-            except ValueError:
-                flash("取引情報の形式が不正です", "error")
-                return redirect(url_for('trade.trade_accept'))
+    # PLRecordの取得（なければ新規作成）
+    pl_record = get_pl_record(ticker, generation_id, group_id)
+    if not pl_record:
+        pl_record = create_new_pl_record(ticker, generation_id, group_id)
+    
+    # 本日の日付（Asia/Tokyo）を取得し、対象日から本日までの営業日リストを取得
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    # ※today.strftime('%Y-%m-%d')は使っていないのでそのまま
+    print("Today:", today)
+    trading_days = get_trading_days(ticker, start_date, today)  # 例: ["20230515", "20230516", ...]
+    trading_days.sort()  # 昇順になるようにソート
+    print("Trading days:", trading_days)
 
-            approved_trade.transaction_price = transaction_price
-            approved_trade.transaction_quantity = transaction_quantity
-            approved_trade.transaction_date = transaction_date
-
-            try:
-                recalc_pl_from_date(approved_trade.ticker, 
-                                    approved_trade.generation_id,
-                                    approved_trade.group_id,
-                                    approved_trade.transaction_date,
-                                    approved_trade
-                                    )
-            except Exception as e:
-                db.session.rollback()
-                flash(f"更新処理エラー: {str(e)}", "error")
-                return redirect(url_for('trade.trade_accept'))
-            db.session.commit()
-            flash("承認済み申請が更新されました", "success")
-            return redirect(url_for('trade.trade_accept'))
-        else:
-            flash("不正なアクション", "error")
-            return redirect(url_for('trade.trade_accept'))
-
-    else:
-        gen_id_str = request.args.get('generation_id') or request.form.get('generation_id') or session.get('current_generation_id')
-        if not gen_id_str:
-            print("生成期が指定されていません", "error")
-            return redirect(url_for('auth.unified_dashboard'))
+    # 既存のpl_dataがあれば利用、なければ空の辞書とする
+    existing_pl_data = pl_record.pl_data if pl_record.pl_data else {}
+    # 対象日（start_date）の文字列
+    start_day_str = start_date.strftime("%Y%m%d")
+    
+    # 初期エントリの取得：対象日直前のエントリがあればそれを、なければ初期値を生成
+    init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
+    if init_entry is None:
         try:
-            gen_id = int(gen_id_str)
-        except ValueError:
-            print("不正な生成期です", "error")
+            cp_init = get_close_price_for_day(ticker, start_date)
+        except Exception("株価を取得できません"):
+            print("recalc_pl_from_dateにおいて株価取得に失敗しました:", ticker, "and", start_day_str)
+            cp_init = None
+        init_entry = {
+            "close_price": cp_init,
+            "holding_quantity": 0,
+            "sold_quantity": 0,
+            "transaction_price": 0,
+            "sold_price": 0,
+            "holding_pl": 0,
+            "sold_pl": 0
+        }
 
-        pending_requests = Request.query.filter_by(generation_id=gen_id, pending=1).all()
-        approved_requests = Accept.query.filter_by(generation_id=gen_id).all()
-        group_list = Group.query.filter_by(generation_id=gen_id).all()
+    # 対象日以降の承認取引を取得（新たな承認取引も含む）
+    approvals = get_accepts(ticker, generation_id, group_id, start_date)
+    if new_approval not in approvals:
+        approvals.append(new_approval)
+    print("get_accepts() works")
+    # 取引日（transaction_date）の昇順にソート
+    print(approvals)
+    approvals.sort(key=lambda a: a.transaction_date if type(a.transaction_date) is date else a.transaction_date.date())
+    print("sorting is working")
+    # 承認取引を、取引日ごとにグループ化（キーは "YYYYMMDD" 文字列）
+    approvals_by_day = {}
+    for appr in approvals:
+        day_str = appr.transaction_date.strftime("%Y%m%d")
+        approvals_by_day.setdefault(day_str, []).append(appr)
+    print("it works here of grouprization")    
+    
+    # 新たに計算するPLデータ用辞書を初期化し、対象日から本日以降のエントリを計算する
+    new_pl_data = {}
+    # 対象日より前の既存データは保持する
+    for k, v in existing_pl_data.items():
+        if k < start_day_str:
+            new_pl_data[k] = v
+    print("save the older days' records")
+    # 対象日を初日のエントリとして初期値を設定
+    current_entry = init_entry.copy()
+    new_pl_data[start_day_str] = current_entry.copy()
+    print("copy and paste!")
+    # --- 修正部分：trading_daysと承認取引の日付を統合する ---
+    all_days = sorted(set(trading_days).union(set(approvals_by_day.keys())))
+    print("All days for calculation:", all_days)
+    # 対象日～本日までの各日付についてループ（対象日より前は無視）
+    prev_day = start_day_str  # 前日のキーとして初期値
+    for day_str in all_days:
+        if day_str < start_day_str:
+            print("days' comparison works")
+            continue  # 対象日より前の日は対象外
+        # 初日は既に設定済み。2日目以降は、前日の結果をコピーして開始
+        if day_str != start_day_str:
+            current_entry = new_pl_data[prev_day].copy()
+        # 当日の承認取引がある場合、順次適用
+        if day_str in approvals_by_day:
+            for appr in approvals_by_day[day_str]:
+                try:
+                    # update_entry_with_approval は current_entry を更新（in-place更新または返り値として更新）
+                    update_entry_with_approval(current_entry, appr, FIXED_FEE)
+                except Exception as e:
+                    print(f"Error updating entry with approval on {day_str}: {e}")
+                    # エラー時はその承認取引をスキップするなど適宜対応
+        # 当日の終値を取得して更新
+        try:
+            dt = datetime.strptime(day_str, "%Y%m%d").date()
+            cp = get_close_price_for_day(ticker, dt)
+        except Exception as e:
+            print(f"Error getting close price for {day_str}: {e}")
+            cp = current_entry.get("close_price", None)
+        current_entry["close_price"] = cp
+        # 再計算：holding_pl = (close_price - transaction_price) * holding_quantity
+        current_entry["holding_pl"] = (cp - current_entry["transaction_price"]) * current_entry["holding_quantity"]
+        # 当日のエントリを確定として保存
+        new_pl_data[day_str] = current_entry.copy()
+        prev_day = day_str
 
-        return render_template(
-            'accept.html',
-            pending_requests=pending_requests,
-            approved_requests=approved_requests,
-            group_list=group_list,
-        )
+    # PLRecord に新たな pl_data を反映して更新（対象日以前のデータも含む）
+    pl_record.pl_data = new_pl_data
+    update_pl_record(pl_record)
+    print("recalc_pl_from_date finished")
 
 # =============================================================================
 # ヘルパー関数（PLRecord 更新用、ticker整形、close_price取得等）
