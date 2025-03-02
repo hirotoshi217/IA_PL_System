@@ -214,7 +214,6 @@ def generation_groups(generation_id):
         gen=gen
     )
 
-
 @trade_bp.route('/generation/<int:generation_id>/groups/edit', methods=['GET', 'POST'])
 @login_required
 def generation_groups_edit(generation_id):
@@ -245,6 +244,10 @@ def generation_groups_edit(generation_id):
             group_id = request.form.get('group_id')
             group_obj = Group.query.filter_by(generation_id=generation_id, group_id=group_id).first()
             if group_obj:
+                # 削除前に、対象グループに依存する Accept, Request, PLRecord のレコードを削除
+                db.session.query(Accept).filter_by(group_id=group_id).delete(synchronize_session=False)
+                db.session.query(Request).filter_by(group_id=group_id).delete(synchronize_session=False)
+                db.session.query(PLRecord).filter_by(group_id=group_id).delete(synchronize_session=False)
                 db.session.delete(group_obj)
                 db.session.commit()
             return redirect(url_for('trade.generation_groups', generation_id=generation_id))
