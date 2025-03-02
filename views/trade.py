@@ -44,8 +44,12 @@ def generation_edit():
             gen_id = request.form.get('target_generation_id')
             gen = Generation.query.get(gen_id)
             if gen:
+                # 関連データ削除：Users, Groups, Request, Accept, PLRecord
                 Users.query.filter_by(generation_id=gen_id).delete()
-                # 関連データ削除（旧テーブルは削除対象）
+                Group.query.filter_by(generation_id=gen_id).delete()
+                Request.query.filter_by(generation_id=gen_id).delete()
+                Accept.query.filter_by(generation_id=gen_id).delete()
+                PLRecord.query.filter_by(generation_id=gen_id).delete()
                 db.session.delete(gen)
                 db.session.commit()
             return redirect(url_for('auth.unified_dashboard'))
