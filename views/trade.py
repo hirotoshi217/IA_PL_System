@@ -454,22 +454,31 @@ def delete_request(request_id):
 @trade_bp.route('/trade/accept', methods=['GET', 'POST'])
 @login_required
 def trade_accept():
+    print("=== trade_accept() に入りました ===")
     if current_user.role != 'admin':
+        print("管理者権限がありません。")
         abort(403, "アクセス権がありません")
 
     if request.method == 'POST':
+        print("POSTリクエストを受信しました。")
         action = request.form.get('action')
+        print(f"フォームからのアクション: {action}")
+
         if action == 'approve':
+            print("【approve】アクションの処理を開始します。")
             req_id = request.form.get('request_id')
+            print(f"申請ID: {req_id}")
             trade_req = Request.query.get(req_id)
             if not trade_req:
                 flash("申請データが見つかりません", "error")
+                print("申請データが見つかりません。")
                 return redirect(url_for('trade.trade_accept'))
             try:
                 transaction_price = float(request.form.get('transaction_price'))
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
                 transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
+                print(f"入力された取引情報: Price={transaction_price}, Quantity={transaction_quantity}, Date={transaction_date}")
             except ValueError:
                 print("取引情報の形式が不正です", "error0")
                 return redirect(url_for('trade.trade_accept'))
@@ -486,12 +495,14 @@ def trade_accept():
             )
             db.session.add(approved_trade)
             try:
-                recalc_pl_from_date(approved_trade.ticker, 
-                                    approved_trade.generation_id,
-                                    approved_trade.group_id,
-                                    approved_trade.transaction_date,
-                                    approved_trade
-                                    )
+                print("recalc_pl_from_date() を呼び出します。")
+                recalc_pl_from_date(
+                    approved_trade.ticker, 
+                    approved_trade.generation_id,
+                    approved_trade.group_id,
+                    approved_trade.transaction_date,
+                    approved_trade
+                )
             except Exception as e:
                 db.session.rollback()
                 print(f"承認処理エラー: {str(e)}", "error1")
@@ -499,29 +510,43 @@ def trade_accept():
             db.session.delete(trade_req)
             db.session.commit()
             flash("申請が承認されました", "success")
+            print("【approve】処理が正常に終了しました。")
             return redirect(url_for('trade.trade_accept'))
 
         elif action == 'update':
+            print("【update】アクションの処理を開始します。")
             approved_id = request.form.get('approved_id')
+            print(f"更新対象の承認済みID: {approved_id}")
             approved_trade = Accept.query.get(approved_id)
             if not approved_trade:
                 flash("承認済みデータが見つかりません", "error2")
+                print("承認済みデータが見つかりません。")
                 return redirect(url_for('trade.trade_accept'))
             try:
                 transaction_price = float(request.form.get('transaction_price'))
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
                 transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
+                print(f"更新後の取引情報: Price={transaction_price}, Quantity={transaction_quantity}, Date={transaction_date}")
             except ValueError:
                 flash("取引情報の形式が不正です", "error")
+                print("取引情報の形式が不正です。")
                 return redirect(url_for('trade.trade_accept'))
-            old_transaction_date = approved_trade.transaction_date
 
+            old_transaction_date = approved_trade.transaction_date
+            print(f"更新前の取引日: {old_transaction_date}")
+
+            # 更新後の取引日を new_transaction_date として扱う
+            new_transaction_date = transaction_date
+
+            # Accept レコードの更新
             approved_trade.transaction_price = transaction_price
             approved_trade.transaction_quantity = transaction_quantity
-            approved_trade.transaction_date = transaction_date
+            approved_trade.transaction_date = new_transaction_date
+            print("更新後の承認レコード:", approved_trade)
 
             try:
+                print("update_pl_from_date() を呼び出します。")
                 update_pl_from_date(
                     approved_trade.ticker, 
                     approved_trade.generation_id,
@@ -533,34 +558,41 @@ def trade_accept():
             except Exception as e:
                 db.session.rollback()
                 flash(f"更新処理エラー: {str(e)}", "error")
+                print(f"更新処理エラー: {str(e)}")
                 return redirect(url_for('trade.trade_accept'))
             db.session.commit()
             flash("承認済み申請が更新されました", "success")
+            print("【update】処理が正常に終了しました。")
             return redirect(url_for('trade.trade_accept'))
         else:
+            print(f"不明なアクションが指定されました: {action}")
             flash("不正なアクション", "error")
             return redirect(url_for('trade.trade_accept'))
 
     else:
+        print("GETリクエストを受信しました。")
         gen_id_str = request.args.get('generation_id') or request.form.get('generation_id') or session.get('current_generation_id')
         if not gen_id_str:
-            print("生成期が指定されていません", "error")
+            print("生成期が指定されていません。")
             return redirect(url_for('auth.unified_dashboard'))
         try:
             gen_id = int(gen_id_str)
+            print(f"生成期ID: {gen_id}")
         except ValueError:
-            print("不正な生成期です", "error")
+            print("不正な生成期です。")
 
         pending_requests = Request.query.filter_by(generation_id=gen_id, pending=1).all()
         approved_requests = Accept.query.filter_by(generation_id=gen_id).all()
         group_list = Group.query.filter_by(generation_id=gen_id).all()
 
+        print("accept.html をレンダリングします。")
         return render_template(
             'accept.html',
             pending_requests=pending_requests,
             approved_requests=approved_requests,
             group_list=group_list,
         )
+
 
 
 
