@@ -454,22 +454,15 @@ def delete_request(request_id):
 @trade_bp.route('/trade/accept', methods=['GET', 'POST'])
 @login_required
 def trade_accept():
-    log.info("trade_accept() が呼び出されました。")
     if current_user.role != 'admin':
-        log.warning("管理者以外のユーザーがアクセスしようとしました。")
         abort(403, "アクセス権がありません")
-    
+
     if request.method == 'POST':
         action = request.form.get('action')
-        log.info(f"POST リクエストの action: {action}")
-        
         if action == 'approve':
-            log.info("approve 処理を開始します。")
             req_id = request.form.get('request_id')
-            log.info(f"承認対象の request_id: {req_id}")
             trade_req = Request.query.get(req_id)
             if not trade_req:
-                log.error("申請データが見つかりません")
                 flash("申請データが見つかりません", "error")
                 return redirect(url_for('trade.trade_accept'))
             try:
@@ -477,12 +470,10 @@ def trade_accept():
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
                 transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-                log.info(f"approve 用の取引情報: price={transaction_price}, quantity={transaction_quantity}, date={transaction_date}")
-            except ValueError as ve:
-                log.error("取引情報の形式が不正です")
-                flash("取引情報の形式が不正です", "error")
+            except ValueError:
+                print("取引情報の形式が不正です", "error0")
                 return redirect(url_for('trade.trade_accept'))
-            
+
             approved_trade = Accept(
                 ticker=trade_req.ticker,
                 generation_id=trade_req.generation_id,
@@ -495,102 +486,82 @@ def trade_accept():
             )
             db.session.add(approved_trade)
             try:
-                recalc_pl_from_date(
-                    approved_trade.ticker,
-                    approved_trade.generation_id,
-                    approved_trade.group_id,
-                    approved_trade.transaction_date,
-                    approved_trade
-                )
-                log.info("recalc_pl_from_date の実行に成功しました。")
+                recalc_pl_from_date(approved_trade.ticker, 
+                                    approved_trade.generation_id,
+                                    approved_trade.group_id,
+                                    approved_trade.transaction_date,
+                                    approved_trade
+                                    )
             except Exception as e:
                 db.session.rollback()
-                log.error(f"承認処理エラー: {str(e)}")
-                flash(f"承認処理エラー: {str(e)}", "error")
+                print(f"承認処理エラー: {str(e)}", "error1")
                 return redirect(url_for('trade.trade_accept'))
             db.session.delete(trade_req)
             db.session.commit()
             flash("申請が承認されました", "success")
-            log.info("approve アクションが正常に完了しました。")
             return redirect(url_for('trade.trade_accept'))
-        
+
         elif action == 'update':
-            log.info("update 処理を開始します。")
             approved_id = request.form.get('approved_id')
-            log.info(f"更新対象の approved_id: {approved_id}")
             approved_trade = Accept.query.get(approved_id)
             if not approved_trade:
-                log.error("承認済みデータが見つかりません")
-                flash("承認済みデータが見つかりません", "error")
+                flash("承認済みデータが見つかりません", "error2")
                 return redirect(url_for('trade.trade_accept'))
             try:
                 transaction_price = float(request.form.get('transaction_price'))
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
-                new_transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-                log.info(f"update 用の取引情報: price={transaction_price}, quantity={transaction_quantity}, new_date={new_transaction_date}")
-            except ValueError as ve:
-                log.error("取引情報の形式が不正です")
+                transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
+            except ValueError:
                 flash("取引情報の形式が不正です", "error")
                 return redirect(url_for('trade.trade_accept'))
-            
-            # 更新前の取引日を保存
             old_transaction_date = approved_trade.transaction_date
-            log.info(f"更新前の取引日: {old_transaction_date}")
-            
-            # Accept レコードを更新
+
             approved_trade.transaction_price = transaction_price
             approved_trade.transaction_quantity = transaction_quantity
-            approved_trade.transaction_date = new_transaction_date
-            log.info("Accept レコードに新しい取引情報を設定しました。")
-            
+            approved_trade.transaction_date = transaction_date
+
             try:
                 update_pl_from_date(
-                    approved_trade.ticker,
+                    approved_trade.ticker, 
                     approved_trade.generation_id,
                     approved_trade.group_id,
                     new_transaction_date,
                     old_transaction_date,
-                    approved_trade
+                    approved_trade  # 更新後の承認レコード
                 )
-                log.info("update_pl_from_date の実行に成功しました。")
             except Exception as e:
                 db.session.rollback()
-                log.error(f"更新処理エラー: {str(e)}")
                 flash(f"更新処理エラー: {str(e)}", "error")
                 return redirect(url_for('trade.trade_accept'))
             db.session.commit()
             flash("承認済み申請が更新されました", "success")
-            log.info("update アクションが正常に完了しました。")
             return redirect(url_for('trade.trade_accept'))
         else:
-            log.error("不正なアクションが指定されました。")
             flash("不正なアクション", "error")
             return redirect(url_for('trade.trade_accept'))
+
     else:
-        log.info("trade_accept() に GET リクエストがありました。")
         gen_id_str = request.args.get('generation_id') or request.form.get('generation_id') or session.get('current_generation_id')
-        log.info(f"リクエストから取得した Generation ID: {gen_id_str}")
         if not gen_id_str:
-            log.error("生成期が指定されていません")
-            flash("生成期が指定されていません", "error")
+            print("生成期が指定されていません", "error")
             return redirect(url_for('auth.unified_dashboard'))
         try:
             gen_id = int(gen_id_str)
-        except ValueError as ve:
-            log.error("不正な生成期です")
-            flash("不正な生成期です", "error")
-            return redirect(url_for('auth.unified_dashboard'))
+        except ValueError:
+            print("不正な生成期です", "error")
+
         pending_requests = Request.query.filter_by(generation_id=gen_id, pending=1).all()
         approved_requests = Accept.query.filter_by(generation_id=gen_id).all()
         group_list = Group.query.filter_by(generation_id=gen_id).all()
-        log.info("accept.html のレンダリングを開始します。")
+
         return render_template(
             'accept.html',
             pending_requests=pending_requests,
             approved_requests=approved_requests,
             group_list=group_list,
         )
+
 
 
 # =============================================================================
@@ -867,10 +838,9 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     update_pl_record(pl_record)
     print("recalc_pl_from_date finished")
 
-
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
-    更新時のバックデート再計算処理（デバッグ用ログ出力付き）
+    更新時のバックデート再計算処理（ログ出力付き）
 
     Parameters:
       ticker: 対象の銘柄
@@ -879,30 +849,30 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
       old_transaction_date: 更新前の取引日（datetime型）
       updated_approval: 更新後の Accept オブジェクト（既に更新済み）
     """
-    log.info("----- update_pl_from_date START -----")
-    log.info(f"Ticker: {ticker}, Generation ID: {generation_id}, Group ID: {group_id}")
-    log.info(f"Old Transaction Date: {old_transaction_date}, New Transaction Date: {new_transaction_date}")
+    logging.info("----- update_pl_from_date START -----")
+    logging.info(f"Ticker: {ticker}, Generation ID: {generation_id}, Group ID: {group_id}")
+    logging.info(f"Old Transaction Date: {old_transaction_date}, New Transaction Date: {new_transaction_date}")
 
     # 再計算開始日は、新旧の取引日のうち、より古い方を採用
     start_date = min(new_transaction_date, old_transaction_date)
-    log.info(f"Calculated start_date for recalculation: {start_date}")
+    logging.info(f"Calculated start_date for recalculation: {start_date}")
 
     # PLRecordの取得（なければ新規作成）
     pl_record = get_pl_record(ticker, generation_id, group_id)
     if not pl_record:
         pl_record = create_new_pl_record(ticker, generation_id, group_id)
-    log.info("PLRecord obtained.")
+    logging.info("PLRecord obtained.")
 
     # 本日の日付（Asia/Tokyo）を取得し、開始日から本日までの営業日リストを取得
     today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
     trading_days = get_trading_days(ticker, start_date, today)
     trading_days.sort()  # 昇順ソート
-    log.info(f"Trading days from {start_date} to {today}: {trading_days}")
+    logging.info(f"Trading days from {start_date} to {today}: {trading_days}")
 
     # 既存の pl_data があれば利用、なければ空の dict とする
     existing_pl_data = pl_record.pl_data if pl_record.pl_data else {}
     start_day_str = start_date.strftime("%Y%m%d")
-    log.info(f"Start day string: {start_day_str}")
+    logging.info(f"Start day string: {start_day_str}")
 
     # 初期エントリを取得（開始日直前のエントリがあればそれを使用）
     init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
@@ -910,7 +880,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         try:
             cp_init = get_close_price_for_day(ticker, start_date)
         except Exception:
-            log.info(f"update_pl_from_date: 株価取得に失敗しました: {ticker} {start_day_str}")
+            logging.info(f"update_pl_from_date: 株価取得に失敗しました: {ticker} {start_day_str}")
             cp_init = None
         init_entry = {
             "close_price": cp_init,
@@ -921,45 +891,45 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
             "holding_pl": 0,
             "sold_pl": 0
         }
-    log.info(f"Initial entry: {init_entry}")
+    logging.info(f"Initial entry: {init_entry}")
 
     # 対象日以降の承認取引（Acceptレコード）を取得
     approvals = get_accepts(ticker, generation_id, group_id, start_date)
-    log.info(f"Approvals retrieved: {len(approvals)} records before adding updated approval.")
+    logging.info(f"Approvals retrieved: {len(approvals)} records before adding updated approval.")
     # 更新された承認取引がリストに含まれていなければ追加する
     if updated_approval not in approvals:
         approvals.append(updated_approval)
-        log.info("Updated approval added to approvals list.")
+        logging.info("Updated approval added to approvals list.")
     
     # 取引日（transaction_date）の昇順にソート
     approvals.sort(key=lambda a: a.transaction_date if isinstance(a.transaction_date, date) 
                                     else a.transaction_date.date())
-    log.info("Approvals after sorting:")
+    logging.info("Approvals after sorting:")
     for appr in approvals:
-        log.info(f"  - {appr.transaction_date} (Ticker: {appr.ticker}, Type: {appr.request_type})")
+        logging.info(f"  - {appr.transaction_date} (Ticker: {appr.ticker}, Type: {appr.request_type})")
 
     # 承認取引を取引日ごとにグループ化（キーは "YYYYMMDD" 形式）
     approvals_by_day = {}
     for appr in approvals:
         day_str = appr.transaction_date.strftime("%Y%m%d")
         approvals_by_day.setdefault(day_str, []).append(appr)
-    log.info("Approvals grouped by day:")
+    logging.info("Approvals grouped by day:")
     for day, appr_list in approvals_by_day.items():
-        log.info(f"  {day}: {len(appr_list)} approvals")
+        logging.info(f"  {day}: {len(appr_list)} approvals")
 
     # 対象日より前の既存データは保持し、再計算する日以降のエントリを新たに作成
     new_pl_data = {}
     for k, v in existing_pl_data.items():
         if k < start_day_str:
             new_pl_data[k] = v
-    log.info("Preserved older days' PL data.")
+    logging.info("Preserved older days' PL data.")
 
     current_entry = init_entry.copy()
     new_pl_data[start_day_str] = current_entry.copy()
 
     # 営業日と承認取引があった日を統合した全日リストを作成
     all_days = sorted(set(trading_days).union(set(approvals_by_day.keys())))
-    log.info(f"All calculation days: {all_days}")
+    logging.info(f"All calculation days: {all_days}")
     
     prev_day = start_day_str
     for day_str in all_days:
@@ -972,29 +942,28 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
             for appr in approvals_by_day[day_str]:
                 try:
                     update_entry_with_approval(current_entry, appr, FIXED_FEE)
-                    log.info(f"Applied approval on {day_str}: {appr}")
+                    logging.info(f"Applied approval on {day_str}: {appr}")
                 except Exception as e:
-                    log.error(f"Error updating entry with approval on {day_str}: {e}")
+                    logging.info(f"Error updating entry with approval on {day_str}: {e}")
         # 当日の終値を取得して更新
         try:
             dt = datetime.strptime(day_str, "%Y%m%d").date()
             cp = get_close_price_for_day(ticker, dt)
         except Exception as e:
-            log.error(f"Error getting close price for {day_str}: {e}")
+            logging.info(f"Error getting close price for {day_str}: {e}")
             cp = current_entry.get("close_price", None)
         current_entry["close_price"] = cp
         # 保有PLの再計算（例: (終値 - 取得価格) * 保有数量）
         current_entry["holding_pl"] = (cp - current_entry["transaction_price"]) * current_entry["holding_quantity"]
         new_pl_data[day_str] = current_entry.copy()
         prev_day = day_str
-        log.info(f"Updated PL entry for {day_str}: {current_entry}")
+        logging.info(f"Updated PL entry for {day_str}: {current_entry}")
 
     # PLRecord に新たな pl_data を反映して更新
     pl_record.pl_data = new_pl_data
     update_pl_record(pl_record)
-    log.info("update_pl_from_date finished")
-    log.info("----- update_pl_from_date END -----")
-
+    logging.info("update_pl_from_date finished")
+    logging.info("----- update_pl_from_date END -----")
 
 
 def get_trading_days(ticker, start_date, end_date):
