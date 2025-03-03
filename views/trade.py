@@ -450,6 +450,8 @@ def delete_request(request_id):
 
     # 4. 削除後は同じリスト画面(= trade_request)へリダイレクト
     return redirect(url_for('trade.trade_request', generation_id=gen_id))
+
+
 @trade_bp.route('/trade/accept', methods=['GET', 'POST'])
 @login_required
 def trade_accept():
@@ -563,6 +565,35 @@ def trade_accept():
             flash("承認済み申請が更新されました", "success")
             print("【update】処理が正常に終了しました。")
             return redirect(url_for('trade.trade_accept'))
+
+        elif action == 'delete':
+            print("【delete】アクションの処理を開始します。")
+            approved_id = request.form.get('approved_id')
+            print(f"削除対象の承認済みID: {approved_id}")
+            approved_trade = Accept.query.get(approved_id)
+            if not approved_trade:
+                flash("承認済みデータが見つかりません", "error3")
+                print("承認済みデータが見つかりません。")
+                return redirect(url_for('trade.trade_accept'))
+            try:
+                print("update_pl_for_deletion() を呼び出します。")
+                update_pl_for_deletion(
+                    approved_trade.ticker,
+                    approved_trade.generation_id,
+                    approved_trade.group_id,
+                    approved_trade
+                )
+            except Exception as e:
+                db.session.rollback()
+                flash(f"削除処理エラー: {str(e)}", "error")
+                print(f"削除処理エラー: {str(e)}")
+                return redirect(url_for('trade.trade_accept'))
+            db.session.delete(approved_trade)
+            db.session.commit()
+            flash("承認済み申請が削除されました", "success")
+            print("【delete】処理が正常に終了しました。")
+            return redirect(url_for('trade.trade_accept'))
+
         else:
             print(f"不明なアクションが指定されました: {action}")
             flash("不正なアクション", "error")
@@ -868,6 +899,8 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     pl_record.pl_data = new_pl_data
     update_pl_record(pl_record)
     print("recalc_pl_from_date finished")
+
+
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
     更新時のバックデート再計算処理（デバッグ用出力付き）
@@ -1030,6 +1063,111 @@ def get_trading_days(ticker, start_date, end_date):
         raise e  # 例外を再送
 
     return trading_days
+
+def update_pl_for_deletion(ticker, generation_id, group_id, deleted_approval):
+    """
+    削除時のバックデート再計算処理
+    Parameters:
+      ticker: 対象の銘柄（整形済み）
+      generation_id, group_id: 期およびグループのID
+      deleted_approval: 削除対象の Accept オブジェクト
+    """
+    print("----- update_pl_for_deletion START -----")
+    # 削除対象の取引日を再計算開始日とする（datetime型の場合はdateに変換）
+    start_date = (
+        deleted_approval.transaction_date
+        if isinstance(deleted_approval.transaction_date, date)
+        else deleted_approval.transaction_date.date()
+    )
+    print(f"Start date for deletion recalculation: {start_date}")
+
+    # PLRecordの取得（なければ新規作成）
+    pl_record = get_pl_record(ticker, generation_id, group_id)
+    if not pl_record:
+        pl_record = create_new_pl_record(ticker, generation_id, group_id)
+
+    # 本日の日付（Asia/Tokyo）を取得し、start_dateから本日までの営業日リストを取得
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+    trading_days = get_trading_days(ticker, start_date, today)
+    trading_days.sort()
+    print(f"Trading days from {start_date} to {today}: {trading_days}")
+
+    # 既存の pl_data（なければ空の辞書）を取得し、start_date文字列を作成
+    existing_pl_data = pl_record.pl_data if pl_record.pl_data else {}
+    start_day_str = start_date.strftime("%Y%m%d")
+
+    # 初期エントリの取得：start_date直前のエントリがあればそれを、なければ初期値を生成
+    init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
+    if init_entry is None:
+        try:
+            cp_init = get_close_price_for_day(ticker, start_date)
+        except Exception as e:
+            print(f"update_pl_for_deletion: 株価取得に失敗しました: {ticker}, {start_day_str}")
+            cp_init = None
+        init_entry = {
+            "close_price": cp_init,
+            "holding_quantity": 0,
+            "sold_quantity": 0,
+            "transaction_price": 0,
+            "sold_price": 0,
+            "holding_pl": 0,
+            "sold_pl": 0
+        }
+    print("Initial entry for deletion recalculation:", init_entry)
+
+    # start_date以降の承認取引を取得し、削除対象の取引は除外する
+    approvals = get_accepts(ticker, generation_id, group_id, start_date)
+    approvals = [appr for appr in approvals if appr.accept_id != deleted_approval.accept_id]
+    print(f"Number of approvals after filtering deletion: {len(approvals)}")
+
+    # 承認取引を取引日順にソートし、日毎にグループ化する
+    approvals.sort(key=lambda a: a.transaction_date if isinstance(a.transaction_date, date)
+                                  else a.transaction_date.date())
+    approvals_by_day = {}
+    for appr in approvals:
+        day_str = appr.transaction_date.strftime("%Y%m%d")
+        approvals_by_day.setdefault(day_str, []).append(appr)
+    print("Approvals grouped by day (after deletion filtering):", approvals_by_day)
+
+    # 既存のPLデータのうち、start_dateより前のデータは保持し、以降は再計算する
+    new_pl_data = {}
+    for k, v in existing_pl_data.items():
+        if k < start_day_str:
+            new_pl_data[k] = v
+    current_entry = init_entry.copy()
+    new_pl_data[start_day_str] = current_entry.copy()
+
+    # 営業日と承認取引があった日を統合した全日リストを作成
+    all_days = sorted(set(trading_days).union(set(approvals_by_day.keys())))
+    print("All days for deletion recalculation:", all_days)
+    prev_day = start_day_str
+    for day_str in all_days:
+        if day_str < start_day_str:
+            continue
+        if day_str != start_day_str:
+            current_entry = new_pl_data[prev_day].copy()
+        if day_str in approvals_by_day:
+            for appr in approvals_by_day[day_str]:
+                try:
+                    update_entry_with_approval(current_entry, appr, FIXED_FEE)
+                except Exception as e:
+                    print(f"Error updating entry with approval on {day_str}: {e}")
+        try:
+            dt = datetime.strptime(day_str, "%Y%m%d").date()
+            cp = get_close_price_for_day(ticker, dt)
+        except Exception as e:
+            print(f"Error getting close price for {day_str}: {e}")
+            cp = current_entry.get("close_price", None)
+        current_entry["close_price"] = cp
+        current_entry["holding_pl"] = (cp - current_entry["transaction_price"]) * current_entry["holding_quantity"]
+        new_pl_data[day_str] = current_entry.copy()
+        prev_day = day_str
+
+    # 新たなPLデータをPLRecordに反映して更新
+    pl_record.pl_data = new_pl_data
+    update_pl_record(pl_record)
+    print("update_pl_for_deletion finished")
+    print("----- update_pl_for_deletion END -----")
 
 
 def update_entry_with_approval(entry, approval, fee):
