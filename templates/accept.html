@@ -193,7 +193,6 @@
                 <input type="hidden" name="action" value="approve">
                 <input type="hidden" name="generation_id" value="{{ req.generation_id }}">
                 <input type="hidden" name="request_id" value="{{ req.request_id }}">
-
                 <!-- グループ（読み取り専用） -->
                 <td>
                   {% for g in group_list %}
@@ -202,7 +201,6 @@
                     {% endif %}
                   {% endfor %}
                 </td>
-
                 <td>
                   <input type="text" class="form-control" name="ticker" value="{{ req.ticker }}" readonly>
                 </td>
@@ -222,7 +220,6 @@
                   <input type="date" class="form-control" name="transaction_date" placeholder="実際の売買実施日（mm/dd/yyyy）">
                 </td>
                 <td>
-                  <!-- 承認ボタン: クリック時にconfirm()で確認をとる -->
                   <button type="submit" class="btn btn-success btn-sm"
                           onclick="return confirm('この内容で承認してよろしいですか？');">
                     <i class="bi bi-check-circle"></i> 承認
@@ -278,6 +275,15 @@
                 <button class="btn btn-primary btn-sm" onclick="toggleEditForm({{ app.accept_id }})">
                   <i class="bi bi-pencil-square"></i> 編集
                 </button>
+                <form method="POST" action="{{ url_for('trade.trade_accept') }}" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="generation_id" value="{{ app.generation_id }}">
+                  <input type="hidden" name="approved_id" value="{{ app.accept_id }}">
+                  <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('本当に削除してよろしいですか？');">
+                    <i class="bi bi-trash"></i> 削除
+                  </button>
+                </form>
               </td>
             </tr>
             <!-- 編集用フォーム行 -->
@@ -287,7 +293,6 @@
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="generation_id" value="{{ app.generation_id }}">
                 <input type="hidden" name="approved_id" value="{{ app.accept_id }}">
-
                 <!-- グループ（読み取り専用） -->
                 <td>
                   {% for g in group_list %}
@@ -296,7 +301,6 @@
                     {% endif %}
                   {% endfor %}
                 </td>
-
                 <td>
                   <input type="text" class="form-control" name="ticker" value="{{ app.ticker }}" readonly>
                 </td>
@@ -316,7 +320,6 @@
                   <input type="date" class="form-control" name="transaction_date" value="{{ app.transaction_date.strftime('%Y-%m-%d') }}">
                 </td>
                 <td>
-                  <!-- 保存ボタン: クリック時にconfirm()で確認をとる -->
                   <button type="submit" class="btn btn-success btn-sm"
                           onclick="return confirm('編集内容を保存してよろしいですか？');">
                     <i class="bi bi-check-circle"></i> 保存
