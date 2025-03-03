@@ -454,15 +454,22 @@ def delete_request(request_id):
 @trade_bp.route('/trade/accept', methods=['GET', 'POST'])
 @login_required
 def trade_accept():
+    log.info("trade_accept() が呼び出されました。")
     if current_user.role != 'admin':
+        log.warning("管理者以外のユーザーがアクセスしようとしました。")
         abort(403, "アクセス権がありません")
-
+    
     if request.method == 'POST':
         action = request.form.get('action')
+        log.info(f"POST リクエストの action: {action}")
+        
         if action == 'approve':
+            log.info("approve 処理を開始します。")
             req_id = request.form.get('request_id')
+            log.info(f"承認対象の request_id: {req_id}")
             trade_req = Request.query.get(req_id)
             if not trade_req:
+                log.error("申請データが見つかりません")
                 flash("申請データが見つかりません", "error")
                 return redirect(url_for('trade.trade_accept'))
             try:
@@ -470,10 +477,12 @@ def trade_accept():
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
                 transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-            except ValueError:
-                print("取引情報の形式が不正です", "error0")
+                log.info(f"approve 用の取引情報: price={transaction_price}, quantity={transaction_quantity}, date={transaction_date}")
+            except ValueError as ve:
+                log.error("取引情報の形式が不正です")
+                flash("取引情報の形式が不正です", "error")
                 return redirect(url_for('trade.trade_accept'))
-
+            
             approved_trade = Accept(
                 ticker=trade_req.ticker,
                 generation_id=trade_req.generation_id,
@@ -486,83 +495,102 @@ def trade_accept():
             )
             db.session.add(approved_trade)
             try:
-                recalc_pl_from_date(approved_trade.ticker, 
-                                    approved_trade.generation_id,
-                                    approved_trade.group_id,
-                                    approved_trade.transaction_date,
-                                    approved_trade
-                                    )
+                recalc_pl_from_date(
+                    approved_trade.ticker,
+                    approved_trade.generation_id,
+                    approved_trade.group_id,
+                    approved_trade.transaction_date,
+                    approved_trade
+                )
+                log.info("recalc_pl_from_date の実行に成功しました。")
             except Exception as e:
                 db.session.rollback()
-                print(f"承認処理エラー: {str(e)}", "error1")
+                log.error(f"承認処理エラー: {str(e)}")
+                flash(f"承認処理エラー: {str(e)}", "error")
                 return redirect(url_for('trade.trade_accept'))
             db.session.delete(trade_req)
             db.session.commit()
             flash("申請が承認されました", "success")
+            log.info("approve アクションが正常に完了しました。")
             return redirect(url_for('trade.trade_accept'))
-
+        
         elif action == 'update':
+            log.info("update 処理を開始します。")
             approved_id = request.form.get('approved_id')
+            log.info(f"更新対象の approved_id: {approved_id}")
             approved_trade = Accept.query.get(approved_id)
             if not approved_trade:
-                flash("承認済みデータが見つかりません", "error2")
+                log.error("承認済みデータが見つかりません")
+                flash("承認済みデータが見つかりません", "error")
                 return redirect(url_for('trade.trade_accept'))
             try:
                 transaction_price = float(request.form.get('transaction_price'))
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
-                transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
-            except ValueError:
+                new_transaction_date = datetime.strptime(transaction_date_str, '%Y-%m-%d')
+                log.info(f"update 用の取引情報: price={transaction_price}, quantity={transaction_quantity}, new_date={new_transaction_date}")
+            except ValueError as ve:
+                log.error("取引情報の形式が不正です")
                 flash("取引情報の形式が不正です", "error")
                 return redirect(url_for('trade.trade_accept'))
             
+            # 更新前の取引日を保存
             old_transaction_date = approved_trade.transaction_date
-
+            log.info(f"更新前の取引日: {old_transaction_date}")
+            
+            # Accept レコードを更新
             approved_trade.transaction_price = transaction_price
             approved_trade.transaction_quantity = transaction_quantity
-            approved_trade.transaction_date = transaction_date
-
+            approved_trade.transaction_date = new_transaction_date
+            log.info("Accept レコードに新しい取引情報を設定しました。")
+            
             try:
                 update_pl_from_date(
-                    approved_trade.ticker, 
+                    approved_trade.ticker,
                     approved_trade.generation_id,
                     approved_trade.group_id,
                     new_transaction_date,
                     old_transaction_date,
-                    approved_trade  # 更新後の承認レコード
+                    approved_trade
                 )
+                log.info("update_pl_from_date の実行に成功しました。")
             except Exception as e:
                 db.session.rollback()
+                log.error(f"更新処理エラー: {str(e)}")
                 flash(f"更新処理エラー: {str(e)}", "error")
                 return redirect(url_for('trade.trade_accept'))
             db.session.commit()
             flash("承認済み申請が更新されました", "success")
+            log.info("update アクションが正常に完了しました。")
             return redirect(url_for('trade.trade_accept'))
         else:
+            log.error("不正なアクションが指定されました。")
             flash("不正なアクション", "error")
             return redirect(url_for('trade.trade_accept'))
-
     else:
+        log.info("trade_accept() に GET リクエストがありました。")
         gen_id_str = request.args.get('generation_id') or request.form.get('generation_id') or session.get('current_generation_id')
+        log.info(f"リクエストから取得した Generation ID: {gen_id_str}")
         if not gen_id_str:
-            print("生成期が指定されていません", "error")
+            log.error("生成期が指定されていません")
+            flash("生成期が指定されていません", "error")
             return redirect(url_for('auth.unified_dashboard'))
         try:
             gen_id = int(gen_id_str)
-        except ValueError:
-            print("不正な生成期です", "error")
-
+        except ValueError as ve:
+            log.error("不正な生成期です")
+            flash("不正な生成期です", "error")
+            return redirect(url_for('auth.unified_dashboard'))
         pending_requests = Request.query.filter_by(generation_id=gen_id, pending=1).all()
         approved_requests = Accept.query.filter_by(generation_id=gen_id).all()
         group_list = Group.query.filter_by(generation_id=gen_id).all()
-
+        log.info("accept.html のレンダリングを開始します。")
         return render_template(
             'accept.html',
             pending_requests=pending_requests,
             approved_requests=approved_requests,
             group_list=group_list,
         )
-
 
 
 # =============================================================================
