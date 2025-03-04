@@ -998,27 +998,28 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     print(f"Ticker: {ticker}, Generation ID: {generation_id}, Group ID: {group_id}")
     print(f"Old Transaction Date (raw): {old_transaction_date}, New Transaction Date (raw): {new_transaction_date}")
 
-    # 日付型の統一
+    # 日付型の統一（両方とも date 型に変換）
     if isinstance(new_transaction_date, datetime):
         new_transaction_date = new_transaction_date.date()
     if isinstance(old_transaction_date, datetime):
         old_transaction_date = old_transaction_date.date()
     print(f"New Transaction Date (as date): {new_transaction_date}, Old Transaction Date (as date): {old_transaction_date}")
 
-    # 再計算開始日は、通常は新旧のうち古い方
+    # 再計算開始日は、常に新旧のうち古い方
     start_date = min(new_transaction_date, old_transaction_date)
-    # しかし、新しい取引日の前に既存の Accept レコードがなければ、過去の PLRecord はそのまま保持する
+    
+    # 新しい取引日より前に Accept レコードが存在するかチェック（すべて日付で比較）
     earlier_accepts = Accept.query.filter(
         Accept.ticker == ticker,
         Accept.generation_id == generation_id,
         Accept.group_id == group_id,
         func.date(Accept.transaction_date) < new_transaction_date
     ).all()
-    preserve_history = False
     if not earlier_accepts:
-        print("No Accept records exist before new transaction date; preserving historical PLRecord data.")
+        print("No Accept records exist before new transaction date; historical PLRecord data will be discarded.")
+        preserve_history = False
+    else:
         preserve_history = True
-        start_date = new_transaction_date  # 再計算は新しい取引日から
 
     print(f"Calculated start_date for recalculation: {start_date}")
 
@@ -1046,6 +1047,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         preserved_data = {k: v for k, v in existing_pl_data.items() if k < start_day_str}
     else:
         preserved_data = {}
+        print("Historical PLRecord data will be discarded.")
 
     # 初期エントリの取得（start_date直前のエントリがあれば利用；なければ新規生成）
     init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
@@ -1073,7 +1075,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         approvals.append(updated_approval)
         print("Updated approval added to approvals list.")
 
-    # 承認取引を取引日順にソート（ここで必ず date 型で比較する）
+    # 承認取引を取引日順にソート（すべて date 型で比較する）
     approvals.sort(key=lambda a: a.transaction_date.date() if isinstance(a.transaction_date, datetime) else a.transaction_date)
     print("Approvals after sorting:")
     for appr in approvals:
@@ -1148,7 +1150,6 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
             print(f"Trimming PLRecord entries with date > {max_accept_day_str} because holding_quantity is 0.")
             trimmed_data = {}
             for k, v in new_data.items():
-                # kは文字列なので、文字列の比較で良いが、念のため数値に変換して比較する場合は int(k) と int(max_accept_day_str) を使う
                 if int(k) <= int(max_accept_day_str):
                     trimmed_data[k] = v
                     print(f"Kept key: {k}")
