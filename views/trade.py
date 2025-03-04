@@ -290,7 +290,7 @@ def download_excel(generation_id):
     filename = f"pl_trend_generation_{generation_id}.xlsx"
     return send_file(
         output,
-        attachment_filename=filename,
+        download_name=filename,
         as_attachment=True,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
@@ -984,7 +984,6 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     print("recalc_pl_from_date finished")
 
 
-
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
     更新時のバックデート再計算処理（未来方向のトリミング拡張付き）
@@ -1014,7 +1013,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         Accept.generation_id == generation_id,
         Accept.group_id == group_id,
         func.date(Accept.transaction_date) < new_transaction_date
-        ).all()
+    ).all()
     preserve_history = False
     if not earlier_accepts:
         print("No Accept records exist before new transaction date; preserving historical PLRecord data.")
@@ -1067,14 +1066,14 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         }
     print("Initial entry:", init_entry)
 
-    # 対象日以降の承認取引を取得
+    # 対象日以降の承認取引（Acceptレコード）を取得
     approvals = get_accepts(ticker, generation_id, group_id, start_date)
     print(f"Approvals retrieved: {len(approvals)} records before adding updated approval.")
     if updated_approval not in approvals:
         approvals.append(updated_approval)
         print("Updated approval added to approvals list.")
 
-    # 承認取引を取引日順にソート
+    # 承認取引を取引日順にソート（ここで必ず date 型で比較する）
     approvals.sort(key=lambda a: a.transaction_date.date() if isinstance(a.transaction_date, datetime) else a.transaction_date)
     print("Approvals after sorting:")
     for appr in approvals:
@@ -1125,17 +1124,37 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         print(f"Updated PL entry for {day_str}: {current_entry}")
 
     # ★ 未来方向の拡張処理 ★
-    # 最新の取引日（max_accept_date）を求める
     if approvals:
         max_accept_date = max(
-            (appr.transaction_date if isinstance(appr.transaction_date, date) else appr.transaction_date.date())
+            (appr.transaction_date.date() if isinstance(appr.transaction_date, datetime) else appr.transaction_date)
             for appr in approvals
         )
+        print(f"Computed max_accept_date: {max_accept_date} (type: {type(max_accept_date)})")
         max_accept_day_str = max_accept_date.strftime("%Y%m%d")
-        # もしその日のエントリの holding_quantity が 0 であれば、max_accept_day_str より未来（すなわち日付 > max_accept_day_str）のエントリを削除
+        print(f"max_accept_day_str: {max_accept_day_str} (type: {type(max_accept_day_str)})")
+        
+        print("new_data keys and their types:")
+        for k in new_data.keys():
+            print(f"  key: {k} (type: {type(k)})")
+        
+        if max_accept_day_str in new_data:
+            holding_qty = new_data[max_accept_day_str].get("holding_quantity", None)
+            print(f"new_data[{max_accept_day_str}]['holding_quantity']: {holding_qty} (type: {type(holding_qty)})")
+        else:
+            print(f"{max_accept_day_str} is not a key in new_data.")
+        
+        # 未来の日付をトリミングする処理
         if max_accept_day_str in new_data and new_data[max_accept_day_str].get("holding_quantity", None) == 0:
             print(f"Trimming PLRecord entries with date > {max_accept_day_str} because holding_quantity is 0.")
-            new_data = {k: v for k, v in new_data.items() if k <= max_accept_day_str}
+            trimmed_data = {}
+            for k, v in new_data.items():
+                # kは文字列なので、文字列の比較で良いが、念のため数値に変換して比較する場合は int(k) と int(max_accept_day_str) を使う
+                if int(k) <= int(max_accept_day_str):
+                    trimmed_data[k] = v
+                    print(f"Kept key: {k}")
+                else:
+                    print(f"Trimmed key: {k}")
+            new_data = trimmed_data
     # ★ 未来方向の拡張処理 ここまで ★
 
     # 最終的に、preserved_data と new_data をマージして更新
