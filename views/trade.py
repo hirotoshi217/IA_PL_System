@@ -914,7 +914,6 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     update_pl_record(pl_record)
     print("recalc_pl_from_date finished")
 
-
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
     更新時のバックデート再計算処理（デバッグ用出力付き）
@@ -936,8 +935,22 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         old_transaction_date = old_transaction_date.date()
     print(f"New Transaction Date (as date): {new_transaction_date}, Old Transaction Date (as date): {old_transaction_date}")
 
-    # 再計算開始日は、新旧の取引日のうち、より古い方
+    # 通常は、新旧の取引日のうちより古い方から再計算を始めるが...
     start_date = min(new_transaction_date, old_transaction_date)
+    
+    # もし新しい取引日が後で、かつ旧取引日以前にAcceptレコードが存在しなければ、
+    # PLRecordの古いエントリは不要なので、start_dateを新しい取引日に切り替える
+    if new_transaction_date > old_transaction_date:
+        earlier_accepts = Accept.query.filter(
+            Accept.ticker == ticker,
+            Accept.generation_id == generation_id,
+            Accept.group_id == group_id,
+            Accept.transaction_date < new_transaction_date
+        ).all()
+        if not earlier_accepts:
+            print("No Accept records exist before new transaction date; resetting start_date to new_transaction_date")
+            start_date = new_transaction_date
+
     print(f"Calculated start_date for recalculation: {start_date}")
 
     # PLRecordの取得（なければ新規作成）
@@ -1000,12 +1013,13 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     for day, appr_list in approvals_by_day.items():
         print(f"  {day}: {len(appr_list)} approvals")
 
-    # 対象日より前の既存データは保持し、再計算する日以降のエントリを新たに作成
+    # 既存のPLデータのうち、start_dateより前のデータは保持し、再計算する日以降のエントリを新たに作成
     new_pl_data = {}
+    # ※今回の変更により、もしstart_dateが新しい取引日になった場合、start_dateより前のデータは捨てる
     for k, v in existing_pl_data.items():
-        if k < start_day_str:
+        if k >= start_day_str:
             new_pl_data[k] = v
-    print("Preserved older days' PL data.")
+    print("Preserved PL data from start_date onward.")
 
     current_entry = init_entry.copy()
     new_pl_data[start_day_str] = current_entry.copy()
