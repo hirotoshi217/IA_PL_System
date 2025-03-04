@@ -983,7 +983,6 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     update_pl_record(pl_record)
     print("recalc_pl_from_date finished")
 
-
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
     更新時のバックデート再計算処理（未来方向のトリミング拡張付き）
@@ -998,18 +997,18 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     print(f"Ticker: {ticker}, Generation ID: {generation_id}, Group ID: {group_id}")
     print(f"Old Transaction Date (raw): {old_transaction_date}, New Transaction Date (raw): {new_transaction_date}")
 
-    # 日付型の統一
+    # 日付型の統一（両方とも date 型に変換）
     if isinstance(new_transaction_date, datetime):
         new_transaction_date = new_transaction_date.date()
     if isinstance(old_transaction_date, datetime):
         old_transaction_date = old_transaction_date.date()
     print(f"New Transaction Date (as date): {new_transaction_date}, Old Transaction Date (as date): {old_transaction_date}")
 
-    # 基本は、再計算開始日は min(old, new)
+    # 基本の再計算開始日は、min(old, new)
     base_start_date = min(new_transaction_date, old_transaction_date)
     print(f"Base start_date (min(old, new)): {base_start_date}")
 
-    # 新しい取引日より前に Accept レコードが存在するかをチェック（比較は日付で行う）
+    # 新しい取引日より前に Accept レコードが存在するかをチェック
     earlier_accepts = Accept.query.filter(
         Accept.ticker == ticker,
         Accept.generation_id == generation_id,
@@ -1017,15 +1016,17 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         func.date(Accept.transaction_date) < new_transaction_date
     ).all()
     
-    # もし新しい取引日以前に Accept レコードが存在しなければ、古いPLRecordは不要なので start_date を新しい取引日にする
     if not earlier_accepts:
         print("No Accept records exist before new transaction date.")
+        # 履歴は不要なので、start_date を新しい取引日にする
         start_date = new_transaction_date
         preserve_history = False
-        print("Historical PLRecord data will be discarded.")
+        # 既存のPLRecordデータは無視する（空にする）
+        existing_pl_data = {}
     else:
-        start_date = base_start_date
         preserve_history = True
+        # 既存のPLRecordデータはそのまま使う
+        existing_pl_data = pl_record.pl_data if (pl_record := get_pl_record(ticker, generation_id, group_id)) and pl_record.pl_data else {}
 
     print(f"Calculated start_date for recalculation: {start_date}")
 
@@ -1041,27 +1042,26 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     trading_days.sort()
     print(f"Trading days from {start_date} to {today}: {trading_days}")
 
-    # 既存のPLRecordデータ（辞書形式）
-    existing_pl_data = pl_record.pl_data if pl_record.pl_data else {}
-
     # start_day_str は再計算開始日の文字列（YYYYMMDD）
     start_day_str = start_date.strftime("%Y%m%d")
     print(f"Start day string: {start_day_str}")
 
-    # 過去のデータの保持：もし履歴を保持するなら、start_date より前のデータを保存。なければ空にする。
+    # preserved_data：履歴を保持する場合のみ、start_date より前のデータを保存。なければ空
     if preserve_history:
         preserved_data = {k: v for k, v in existing_pl_data.items() if k < start_day_str}
     else:
         preserved_data = {}
-    
+        print("Historical PLRecord data will be discarded.")
+
     # 初期エントリの取得（start_date直前のエントリがあれば利用；なければ新規生成）
     init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
     if init_entry is None:
         try:
             cp_init = get_close_price_for_day(ticker, start_date)
         except Exception:
-            print("update_pl_from_date: 株価取得に失敗しました:", ticker, start_day_str)
+            print("update_pl_from_date: Failed to get close price for:", ticker, start_day_str)
             cp_init = None
+        # ここでは履歴がない場合はゼロから開始する
         init_entry = {
             "close_price": cp_init,
             "holding_quantity": 0,
@@ -1080,13 +1080,13 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         approvals.append(updated_approval)
         print("Updated approval added to approvals list.")
 
-    # 承認取引を取引日順にソート（すべて date 型で比較する）
+    # 承認取引を取引日順にソート（すべて date 型で比較）
     approvals.sort(key=lambda a: a.transaction_date.date() if isinstance(a.transaction_date, datetime) else a.transaction_date)
     print("Approvals after sorting:")
     for appr in approvals:
         print(f"  - {appr.transaction_date} (Ticker: {appr.ticker}, Type: {appr.request_type})")
 
-    # 承認取引を取引日ごとにグループ化（キーはYYYYMMDD）
+    # 承認取引を日付ごとにグループ化（キーはYYYYMMDD）
     approvals_by_day = {}
     for appr in approvals:
         day_str = appr.transaction_date.strftime("%Y%m%d")
@@ -1095,12 +1095,13 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     for day, lst in approvals_by_day.items():
         print(f"  {day}: {len(lst)} approvals")
 
-    # 新たなPLデータの再計算部分
+    # 新たなPLRecordデータの再計算
     new_data = {}
+    # 初期エントリ（ベースはゼロから再構築する）
     current_entry = init_entry.copy()
     new_data[start_day_str] = current_entry.copy()
 
-    # 営業日と承認取引日を統合した全日リストを作成
+    # 営業日と承認取引日を統合した全日リスト
     all_days = sorted(set(trading_days).union(set(approvals_by_day.keys())))
     print("All calculation days:", all_days)
     
@@ -1129,7 +1130,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         prev_day = day_str
         print(f"Updated PL entry for {day_str}: {current_entry}")
 
-    # ★ 未来方向の拡張処理 ★
+    # ★ 未来方向のトリミング処理 ★
     if approvals:
         max_accept_date = max(
             (appr.transaction_date.date() if isinstance(appr.transaction_date, datetime) else appr.transaction_date)
@@ -1149,7 +1150,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         else:
             print(f"{max_accept_day_str} is not a key in new_data.")
         
-        # 未来の日付をトリミングする処理
+        # トリミング処理：最新Acceptの日付以降のエントリを削除
         if max_accept_day_str in new_data and new_data[max_accept_day_str].get("holding_quantity", None) == 0:
             print(f"Trimming PLRecord entries with date > {max_accept_day_str} because holding_quantity is 0.")
             trimmed_data = {}
@@ -1160,7 +1161,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
                 else:
                     print(f"Trimmed key: {k}")
             new_data = trimmed_data
-    # ★ 未来方向の拡張処理 ここまで ★
+    # ★ 未来方向のトリミング処理 ここまで ★
 
     # 最終的に、preserved_data と new_data をマージして更新
     final_pl_data = {}
