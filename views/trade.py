@@ -914,6 +914,8 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
     update_pl_record(pl_record)
     print("recalc_pl_from_date finished")
 
+
+
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
     更新時のバックデート再計算処理（デバッグ用出力付き）
@@ -939,7 +941,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     start_date = min(new_transaction_date, old_transaction_date)
     
     # もし新しい取引日が後で、かつ旧取引日以前にAcceptレコードが存在しなければ、
-    # PLRecordの古いエントリは不要なので、start_dateを新しい取引日に切り替える
+    # PLRecord の古いエントリは不要なので、start_date を新しい取引日に切り替える
     if new_transaction_date > old_transaction_date:
         earlier_accepts = Accept.query.filter(
             Accept.ticker == ticker,
@@ -1013,12 +1015,8 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
     for day, appr_list in approvals_by_day.items():
         print(f"  {day}: {len(appr_list)} approvals")
 
-    # 既存のPLデータのうち、start_dateより前のデータは保持し、再計算する日以降のエントリを新たに作成
-    new_pl_data = {}
-    # ※今回の変更により、もしstart_dateが新しい取引日になった場合、start_dateより前のデータは捨てる
-    for k, v in existing_pl_data.items():
-        if k >= start_day_str:
-            new_pl_data[k] = v
+    # 既存のPLデータのうち、start_date以降のデータだけを保持する（新しい取引日以前の不要なデータを除去）
+    new_pl_data = {k: v for k, v in existing_pl_data.items() if k >= start_day_str}
     print("Preserved PL data from start_date onward.")
 
     current_entry = init_entry.copy()
@@ -1055,6 +1053,20 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         new_pl_data[day_str] = current_entry.copy()
         prev_day = day_str
         print(f"Updated PL entry for {day_str}: {current_entry}")
+
+    # ★ ここから未来方向の拡張処理 ★
+    # もし承認取引が存在する場合、最新の取引日（max_accept_date）を求める
+    if approvals:
+        max_accept_date = max(
+            (appr.transaction_date if isinstance(appr.transaction_date, date) else appr.transaction_date.date())
+            for appr in approvals
+        )
+        max_accept_day_str = max_accept_date.strftime("%Y%m%d")
+        # もしその日の保有数量が 0 であれば、max_accept_day_str より未来の日付のエントリは不要と判断して削除
+        if max_accept_day_str in new_pl_data and new_pl_data[max_accept_day_str].get("holding_quantity", None) == 0:
+            print(f"Trimming PLRecord entries after {max_accept_day_str} because holding_quantity is 0.")
+            new_pl_data = {k: v for k, v in new_pl_data.items() if k <= max_accept_day_str}
+    # ★ 未来方向の拡張処理 ここまで ★
 
     # PLRecord に新たな pl_data を反映して更新
     pl_record.pl_data = new_pl_data
