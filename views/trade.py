@@ -249,7 +249,6 @@ def download_excel(generation_id):
     unique_dates = set()
     for g in groups:
         history = get_group_pl_history(generation_id, g.group_id)  # list of (date_str, total_pl)
-        # 辞書形式に変換：キーが日付、値がPL
         history_dict = {date_str: total_pl for date_str, total_pl in history}
         group_data_map[g.group_id] = {
             'group_name': g.group_name,
@@ -261,22 +260,17 @@ def download_excel(generation_id):
     unique_dates = sorted(list(unique_dates))
 
     # Excel用にDataFrameを作成
-    # 最初の列は日付（"日付"）
     data = {'日付': unique_dates}
-
-    # 各グループについて、unique_dates内の各日付に対して値を補完
     for g in groups:
         group_id = g.group_id
         group_name = g.group_name
         history = group_data_map[group_id]['pl_history']
-        # 補完用に、グループ内で存在する日付リストを昇順で取得
         history_keys = sorted(history.keys())
         group_values = []
         for d in unique_dates:
             if d in history:
                 group_values.append(history[d])
             else:
-                # dより前の日付で最新の値を探す。なければ0
                 value = 0
                 for past_date in reversed(history_keys):
                     if past_date < d:
@@ -285,14 +279,12 @@ def download_excel(generation_id):
                 group_values.append(value)
         data[group_name] = group_values
 
-    # DataFrameに変換
     df = pd.DataFrame(data)
 
-    # Excelファイルに書き出すためBytesIOを利用
+    # BytesIOにExcelを書き出す（with文を使用）
     output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, index=False, sheet_name='PL推移')
-    writer.save()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='PL推移')
     output.seek(0)
 
     filename = f"pl_trend_generation_{generation_id}.xlsx"
@@ -1083,8 +1075,7 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         print("Updated approval added to approvals list.")
 
     # 承認取引を取引日順にソート
-    approvals.sort(key=lambda a: a.transaction_date if isinstance(a.transaction_date, date) 
-                                    else a.transaction_date.date())
+    approvals.sort(key=lambda a: a.transaction_date.date() if isinstance(a.transaction_date, datetime) else a.transaction_date)
     print("Approvals after sorting:")
     for appr in approvals:
         print(f"  - {appr.transaction_date} (Ticker: {appr.ticker}, Type: {appr.request_type})")
