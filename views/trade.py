@@ -1073,12 +1073,23 @@ def update_pl_for_deletion(ticker, generation_id, group_id, deleted_approval):
       deleted_approval: 削除対象の Accept オブジェクト
     """
     print("----- update_pl_for_deletion START -----")
+    
+    # まず、該当のticker, generation, groupに対して全Acceptレコードを取得し、
+    # 削除対象を除いた残りがないかチェックする
+    all_accepts = Accept.query.filter_by(ticker=ticker, generation_id=generation_id, group_id=group_id).all()
+    remaining_accepts = [acc for acc in all_accepts if acc.accept_id != deleted_approval.accept_id]
+    if not remaining_accepts:
+        print(f"No remaining approvals for ticker {ticker}, generation {generation_id}, group {group_id}. Deleting PLRecord.")
+        pl_record = get_pl_record(ticker, generation_id, group_id)
+        if pl_record:
+            db.session.delete(pl_record)
+        print("update_pl_for_deletion finished (PLRecord deleted)")
+        return
+
     # 削除対象の取引日を再計算開始日とする（datetime型の場合はdateに変換）
-    start_date = (
-        deleted_approval.transaction_date
-        if isinstance(deleted_approval.transaction_date, date)
-        else deleted_approval.transaction_date.date()
-    )
+    start_date = (deleted_approval.transaction_date
+                  if isinstance(deleted_approval.transaction_date, date)
+                  else deleted_approval.transaction_date.date())
     print(f"Start date for deletion recalculation: {start_date}")
 
     # PLRecordの取得（なければ新規作成）
@@ -1168,7 +1179,6 @@ def update_pl_for_deletion(ticker, generation_id, group_id, deleted_approval):
     update_pl_record(pl_record)
     print("update_pl_for_deletion finished")
     print("----- update_pl_for_deletion END -----")
-
 
 def update_entry_with_approval(entry, approval, fee):
     """
