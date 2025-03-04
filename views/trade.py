@@ -11,6 +11,8 @@ import pandas as pd
 import pytz
 import logging
 from zoneinfo import ZoneInfo
+from sqlalchemy import func
+
 
 sys.stdout.reconfigure(encoding='utf-8')  # 日本語の文字化け防止
 
@@ -1019,8 +1021,8 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         Accept.ticker == ticker,
         Accept.generation_id == generation_id,
         Accept.group_id == group_id,
-        Accept.transaction_date < new_transaction_date
-    ).all()
+        func.date(Accept.transaction_date) < new_transaction_date
+        ).all()
     preserve_history = False
     if not earlier_accepts:
         print("No Accept records exist before new transaction date; preserving historical PLRecord data.")
