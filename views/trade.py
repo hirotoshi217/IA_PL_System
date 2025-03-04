@@ -190,9 +190,23 @@ def generation_groups(generation_id):
     import random
     for g in groups:
         data = []
+        # 辞書形式に変換（キー：日付、値：PL）
         history = dict(group_data_map[g.group_id]['pl_history'])
+        # 各 unique_dates について、値がなければ直前の値または0を補完
+        # ※unique_datesより前の日付は考慮しない前提です
+        # なお、history_keysはこのグループの記録済み日付のリスト（昇順）
+        history_keys = sorted(history.keys())
         for d in unique_dates:
-            data.append(history.get(d, None))
+            if d in history:
+                value = history[d]
+            else:
+                # dより前の日付で最新の値を探す
+                value = 0  # デフォルトは0
+                for past_date in reversed(history_keys):
+                    if past_date < d:
+                        value = history[past_date]
+                        break
+            data.append(value)
         r = random.randint(50, 200)
         g_ = random.randint(50, 200)
         b = random.randint(50, 200)
