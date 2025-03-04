@@ -228,6 +228,81 @@ def generation_groups(generation_id):
         gen=gen
     )
 
+
+@trade_bp.route('/generation/<int:generation_id>/download_excel', methods=['GET'])
+@login_required
+def download_excel(generation_id):
+    import io
+    import pandas as pd
+    from flask import send_file
+
+    # 期の存在チェック
+    gen = Generation.query.get_or_404(generation_id)
+
+    # 対象のグループ一覧取得（表示順）
+    groups = Group.query.filter_by(generation_id=generation_id).order_by(Group.group_id).all()
+
+    # 各グループごとのPL推移データを取得し、共通の日付リスト（unique_dates）を作成
+    group_data_map = {}
+    unique_dates = set()
+    for g in groups:
+        history = get_group_pl_history(generation_id, g.group_id)  # list of (date_str, total_pl)
+        # 辞書形式に変換：キーが日付、値がPL
+        history_dict = {date_str: total_pl for date_str, total_pl in history}
+        group_data_map[g.group_id] = {
+            'group_name': g.group_name,
+            'pl_history': history_dict
+        }
+        for date_str in history_dict.keys():
+            unique_dates.add(date_str)
+
+    unique_dates = sorted(list(unique_dates))
+
+    # Excel用にDataFrameを作成
+    # 最初の列は日付（"日付"）
+    data = {'日付': unique_dates}
+
+    # 各グループについて、unique_dates内の各日付に対して値を補完
+    for g in groups:
+        group_id = g.group_id
+        group_name = g.group_name
+        history = group_data_map[group_id]['pl_history']
+        # 補完用に、グループ内で存在する日付リストを昇順で取得
+        history_keys = sorted(history.keys())
+        group_values = []
+        for d in unique_dates:
+            if d in history:
+                group_values.append(history[d])
+            else:
+                # dより前の日付で最新の値を探す。なければ0
+                value = 0
+                for past_date in reversed(history_keys):
+                    if past_date < d:
+                        value = history[past_date]
+                        break
+                group_values.append(value)
+        data[group_name] = group_values
+
+    # DataFrameに変換
+    df = pd.DataFrame(data)
+
+    # Excelファイルに書き出すためBytesIOを利用
+    output = io.BytesIO()
+    writer = pd.ExcelWriter(output, engine='xlsxwriter')
+    df.to_excel(writer, index=False, sheet_name='PL推移')
+    writer.save()
+    output.seek(0)
+
+    filename = f"pl_trend_generation_{generation_id}.xlsx"
+    return send_file(
+        output,
+        attachment_filename=filename,
+        as_attachment=True,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+
 @trade_bp.route('/generation/<int:generation_id>/groups/edit', methods=['GET', 'POST'])
 @login_required
 def generation_groups_edit(generation_id):
@@ -918,40 +993,39 @@ def recalc_pl_from_date(ticker, generation_id, group_id, start_date, new_approva
 
 def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, old_transaction_date, updated_approval):
     """
-    更新時のバックデート再計算処理（デバッグ用出力付き）
+    更新時のバックデート再計算処理（未来方向のトリミング拡張付き）
     Parameters:
       ticker: 対象の銘柄
       generation_id, group_id: 期およびグループのID
-      new_transaction_date: 更新後の取引日（datetime型 または date型）
-      old_transaction_date: 更新前の取引日（datetime型 または date型）
+      new_transaction_date: 更新後の取引日（datetime型またはdate型）
+      old_transaction_date: 更新前の取引日（datetime型またはdate型）
       updated_approval: 更新後の Accept オブジェクト（既に更新済み）
     """
     print("----- update_pl_from_date START -----")
     print(f"Ticker: {ticker}, Generation ID: {generation_id}, Group ID: {group_id}")
     print(f"Old Transaction Date (raw): {old_transaction_date}, New Transaction Date (raw): {new_transaction_date}")
 
-    # 日付型の統一：datetime型なら date型に変換
+    # 日付型の統一
     if isinstance(new_transaction_date, datetime):
         new_transaction_date = new_transaction_date.date()
     if isinstance(old_transaction_date, datetime):
         old_transaction_date = old_transaction_date.date()
     print(f"New Transaction Date (as date): {new_transaction_date}, Old Transaction Date (as date): {old_transaction_date}")
 
-    # 通常は、新旧の取引日のうちより古い方から再計算を始めるが...
+    # 再計算開始日は、通常は新旧のうち古い方
     start_date = min(new_transaction_date, old_transaction_date)
-    
-    # もし新しい取引日が後で、かつ旧取引日以前にAcceptレコードが存在しなければ、
-    # PLRecord の古いエントリは不要なので、start_date を新しい取引日に切り替える
-    if new_transaction_date > old_transaction_date:
-        earlier_accepts = Accept.query.filter(
-            Accept.ticker == ticker,
-            Accept.generation_id == generation_id,
-            Accept.group_id == group_id,
-            Accept.transaction_date < new_transaction_date
-        ).all()
-        if not earlier_accepts:
-            print("No Accept records exist before new transaction date; resetting start_date to new_transaction_date")
-            start_date = new_transaction_date
+    # しかし、新しい取引日の前に既存の Accept レコードがなければ、過去の PLRecord はそのまま保持する
+    earlier_accepts = Accept.query.filter(
+        Accept.ticker == ticker,
+        Accept.generation_id == generation_id,
+        Accept.group_id == group_id,
+        Accept.transaction_date < new_transaction_date
+    ).all()
+    preserve_history = False
+    if not earlier_accepts:
+        print("No Accept records exist before new transaction date; preserving historical PLRecord data.")
+        preserve_history = True
+        start_date = new_transaction_date  # 再計算は新しい取引日から
 
     print(f"Calculated start_date for recalculation: {start_date}")
 
@@ -961,18 +1035,26 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         pl_record = create_new_pl_record(ticker, generation_id, group_id)
     print("PLRecord obtained.")
 
-    # 本日の日付（Asia/Tokyo）を取得し、開始日から本日までの営業日リストを取得
+    # 本日の日付（Asia/Tokyo）と、start_date～本日までの営業日リストを取得
     today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
     trading_days = get_trading_days(ticker, start_date, today)
-    trading_days.sort()  # 昇順ソート
+    trading_days.sort()
     print(f"Trading days from {start_date} to {today}: {trading_days}")
 
-    # 既存の pl_data があれば利用、なければ空の dict とする
+    # 既存のPLRecordデータ（辞書形式）
     existing_pl_data = pl_record.pl_data if pl_record.pl_data else {}
+
+    # start_day_str は再計算開始日の文字列（YYYYMMDD）
     start_day_str = start_date.strftime("%Y%m%d")
     print(f"Start day string: {start_day_str}")
 
-    # 初期エントリを取得（開始日直前のエントリがあればそれを使用）
+    # 過去のデータ（start_dateより前）を保持するかどうか
+    if preserve_history:
+        preserved_data = {k: v for k, v in existing_pl_data.items() if k < start_day_str}
+    else:
+        preserved_data = {}
+
+    # 初期エントリの取得（start_date直前のエントリがあれば利用；なければ新規生成）
     init_entry = get_previous_day_entry(existing_pl_data, start_day_str)
     if init_entry is None:
         try:
@@ -991,48 +1073,45 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
         }
     print("Initial entry:", init_entry)
 
-    # 対象日以降の承認取引（Acceptレコード）を取得
+    # 対象日以降の承認取引を取得
     approvals = get_accepts(ticker, generation_id, group_id, start_date)
     print(f"Approvals retrieved: {len(approvals)} records before adding updated approval.")
-    # 更新された承認取引がリストに含まれていなければ追加する
     if updated_approval not in approvals:
         approvals.append(updated_approval)
         print("Updated approval added to approvals list.")
-    
-    # 取引日（transaction_date）の昇順にソート
+
+    # 承認取引を取引日順にソート
     approvals.sort(key=lambda a: a.transaction_date if isinstance(a.transaction_date, date) 
                                     else a.transaction_date.date())
     print("Approvals after sorting:")
     for appr in approvals:
         print(f"  - {appr.transaction_date} (Ticker: {appr.ticker}, Type: {appr.request_type})")
 
-    # 承認取引を取引日ごとにグループ化（キーは "YYYYMMDD" 形式）
+    # 承認取引を、取引日ごとにグループ化（キーはYYYYMMDD）
     approvals_by_day = {}
     for appr in approvals:
         day_str = appr.transaction_date.strftime("%Y%m%d")
         approvals_by_day.setdefault(day_str, []).append(appr)
     print("Approvals grouped by day:")
-    for day, appr_list in approvals_by_day.items():
-        print(f"  {day}: {len(appr_list)} approvals")
+    for day, lst in approvals_by_day.items():
+        print(f"  {day}: {len(lst)} approvals")
 
-    # 既存のPLデータのうち、start_date以降のデータだけを保持する（新しい取引日以前の不要なデータを除去）
-    new_pl_data = {k: v for k, v in existing_pl_data.items() if k >= start_day_str}
-    print("Preserved PL data from start_date onward.")
-
+    # 新たなPLデータは、まず preserved_data（歴史的データ）をそのまま保持し、
+    # 再計算は start_day_str 以降で行う
+    new_data = {}
     current_entry = init_entry.copy()
-    new_pl_data[start_day_str] = current_entry.copy()
+    new_data[start_day_str] = current_entry.copy()
 
-    # 営業日と承認取引があった日を統合した全日リストを作成
+    # 営業日と承認取引日を統合した全日リストを作成
     all_days = sorted(set(trading_days).union(set(approvals_by_day.keys())))
     print("All calculation days:", all_days)
     
     prev_day = start_day_str
     for day_str in all_days:
         if day_str < start_day_str:
-            continue  # 再計算開始日より前はそのまま
+            continue
         if day_str != start_day_str:
-            current_entry = new_pl_data[prev_day].copy()
-        # 当日の承認取引がある場合、順に適用
+            current_entry = new_data[prev_day].copy()
         if day_str in approvals_by_day:
             for appr in approvals_by_day[day_str]:
                 try:
@@ -1040,7 +1119,6 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
                     print(f"Applied approval on {day_str}: {appr}")
                 except Exception as e:
                     print(f"Error updating entry with approval on {day_str}: {e}")
-        # 当日の終値を取得して更新
         try:
             dt = datetime.strptime(day_str, "%Y%m%d").date()
             cp = get_close_price_for_day(ticker, dt)
@@ -1048,32 +1126,33 @@ def update_pl_from_date(ticker, generation_id, group_id, new_transaction_date, o
             print(f"Error getting close price for {day_str}: {e}")
             cp = current_entry.get("close_price", None)
         current_entry["close_price"] = cp
-        # 保有PLの再計算（例: (終値 - 取得価格) * 保有数量）
         current_entry["holding_pl"] = (cp - current_entry["transaction_price"]) * current_entry["holding_quantity"]
-        new_pl_data[day_str] = current_entry.copy()
+        new_data[day_str] = current_entry.copy()
         prev_day = day_str
         print(f"Updated PL entry for {day_str}: {current_entry}")
 
-    # ★ ここから未来方向の拡張処理 ★
-    # もし承認取引が存在する場合、最新の取引日（max_accept_date）を求める
+    # ★ 未来方向の拡張処理 ★
+    # 最新の取引日（max_accept_date）を求める
     if approvals:
         max_accept_date = max(
             (appr.transaction_date if isinstance(appr.transaction_date, date) else appr.transaction_date.date())
             for appr in approvals
         )
         max_accept_day_str = max_accept_date.strftime("%Y%m%d")
-        # もしその日の保有数量が 0 であれば、max_accept_day_str より未来の日付のエントリは不要と判断して削除
-        if max_accept_day_str in new_pl_data and new_pl_data[max_accept_day_str].get("holding_quantity", None) == 0:
-            print(f"Trimming PLRecord entries after {max_accept_day_str} because holding_quantity is 0.")
-            new_pl_data = {k: v for k, v in new_pl_data.items() if k <= max_accept_day_str}
+        # もしその日のエントリの holding_quantity が 0 であれば、max_accept_day_str より未来（すなわち日付 > max_accept_day_str）のエントリを削除
+        if max_accept_day_str in new_data and new_data[max_accept_day_str].get("holding_quantity", None) == 0:
+            print(f"Trimming PLRecord entries with date > {max_accept_day_str} because holding_quantity is 0.")
+            new_data = {k: v for k, v in new_data.items() if k <= max_accept_day_str}
     # ★ 未来方向の拡張処理 ここまで ★
 
-    # PLRecord に新たな pl_data を反映して更新
-    pl_record.pl_data = new_pl_data
+    # 最終的に、preserved_data と new_data をマージして更新
+    final_pl_data = {}
+    final_pl_data.update(preserved_data)
+    final_pl_data.update(new_data)
+    pl_record.pl_data = final_pl_data
     update_pl_record(pl_record)
     print("update_pl_from_date finished")
     print("----- update_pl_from_date END -----")
-
 
 def get_trading_days(ticker, start_date, end_date):
     """
