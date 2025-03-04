@@ -1,318 +1,340 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>{{ generation_name }} のグループ一覧</title>
-  <!-- Bootstrap CSSの読み込み -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Google Fontsの読み込み（オプション） -->
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-  <!-- Bootstrap Iconsの読み込み（オプション） -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <style>
-    body {
-      /* 背景画像の設定（ダッシュボードと同様） */
-      background-image: url("{{ url_for('static', filename='images/finance-background.jpg') }}");
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      min-height: 100vh;
-      font-family: 'Roboto', sans-serif;
-      position: relative;
-      margin: 0;
-      /* ナビゲーションバー削除後の余白調整 */
-      padding-top: 0;
-    }
-    /* オーバーレイの追加 */
-    body::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.3); /* 半透明の黒 */
-      z-index: 1;
-    }
-    .main-container {
-      position: relative;
-      z-index: 2; /* オーバーレイの上に表示 */
-      padding: 30px 15px;
-    }
-    .page-header {
-      color: #ffffff;
-      text-align: center;
-      margin-bottom: 30px;
-    }
-    .page-header h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-    }
-    .table-responsive {
-      background-color: rgba(255, 255, 255, 0.9);
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-      margin-bottom: 30px;
-    }
-    .admin-section {
-      background-color: rgba(255, 255, 255, 0.85);
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-    }
-    .admin-section h2 {
-      margin-bottom: 20px;
-      color: #343a40;
-      font-weight: 700;
-    }
-    .admin-section ul {
-      list-style: none;
-      padding: 0;
-    }
-    .admin-section li {
-      margin-bottom: 10px;
-    }
-    .admin-section a {
-      color: #007bff;
-      text-decoration: none;
-      transition: color 0.3s ease;
-    }
-    .admin-section a:hover {
-      color: #0056b3;
-      text-decoration: none;
-    }
-    .logout-button {
-      background-color: #dc3545;
-      color: #ffffff;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
-      font-size: 1rem;
-      transition: background-color 0.3s ease, transform 0.2s ease;
-      width: 100%;
-      text-align: center;
-      display: inline-block;
-    }
-    .logout-button:hover {
-      background-color: #c82333;
-      transform: translateY(-2px);
-      color: #ffffff;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    /* レスポンシブデザイン調整（オプション） */
-    @media (max-width: 768px) {
+  <head>
+    <meta charset="UTF-8">
+    <title>{{ generation_name }} のグループ一覧</title>
+    <!-- Bootstrap CSSの読み込み -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+    <!-- Google Fontsの読み込み（オプション） -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"
+      rel="stylesheet">
+    <!-- Bootstrap Iconsの読み込み（オプション） -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+      body {
+        /* 背景画像の設定（ダッシュボードと同様） */
+        background-image: url("{{ url_for('static', filename='images/finance-background.jpg') }}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        min-height: 100vh;
+        font-family: 'Roboto', sans-serif;
+        position: relative;
+        margin: 0;
+        /* ナビゲーションバー削除後の余白調整 */
+        padding-top: 0;
+      }
+      /* オーバーレイの追加 */
+      body::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.3); /* 半透明の黒 */
+        z-index: 1;
+      }
+      .main-container {
+        position: relative;
+        z-index: 2; /* オーバーレイの上に表示 */
+        padding: 30px 15px;
+      }
+      .page-header {
+        color: #ffffff;
+        text-align: center;
+        margin-bottom: 30px;
+      }
       .page-header h1 {
-        font-size: 2rem;
+        font-size: 2.5rem;
+        font-weight: 700;
+      }
+      .table-responsive {
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        margin-bottom: 30px;
+      }
+      .admin-section {
+        background-color: rgba(255, 255, 255, 0.85);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+      }
+      .admin-section h2 {
+        margin-bottom: 20px;
+        color: #343a40;
+        font-weight: 700;
+      }
+      .admin-section ul {
+        list-style: none;
+        padding: 0;
+      }
+      .admin-section li {
+        margin-bottom: 10px;
+      }
+      .admin-section a {
+        color: #007bff;
+        text-decoration: none;
+        transition: color 0.3s ease;
+      }
+      .admin-section a:hover {
+        color: #0056b3;
+        text-decoration: none;
       }
       .logout-button {
-        font-size: 0.9rem;
-        padding: 8px 16px;
+        background-color: #dc3545;
+        color: #ffffff;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        font-size: 1rem;
+        transition: background-color 0.3s ease, transform 0.2s ease;
+        width: 100%;
+        text-align: center;
+        display: inline-block;
       }
-    }
-    /* グラフのスタイル */
-    .chart-container {
-      background-color: rgba(255, 255, 255, 0.9);
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-      margin-bottom: 30px;
-    }
-    .chart-container h2 {
-      margin-bottom: 20px;
-      color: #343a40;
-      font-weight: 700;
-    }
-    /* 新規ボタン用のスタイル */
-    .action-buttons {
-      margin-bottom: 30px;
-      text-align: center;
-    }
-    .action-buttons .btn {
-      margin: 0 10px;
-    }
-  </style>
-</head>
-<body>
-  <!-- メインコンテンツ -->
-  <div class="main-container container">
-    <!-- ページヘッダー -->
-    <div class="page-header">
-      <h1>{{ generation_name }} のグループ一覧</h1>
-    </div>
+      .logout-button:hover {
+        background-color: #c82333;
+        transform: translateY(-2px);
+        color: #ffffff;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      /* レスポンシブデザイン調整（オプション） */
+      @media (max-width: 768px) {
+        .page-header h1 {
+          font-size: 2rem;
+        }
+        .logout-button {
+          font-size: 0.9rem;
+          padding: 8px 16px;
+        }
+      }
+      /* グラフのスタイル */
+      .chart-container {
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        margin-bottom: 30px;
+        position: relative; /* エクセルボタンの位置調整用 */
+      }
+      .chart-container h2 {
+        margin-bottom: 20px;
+        color: #343a40;
+        font-weight: 700;
+      }
+      /* 新規ボタン用のスタイル */
+      .action-buttons {
+        margin-bottom: 30px;
+        text-align: center;
+      }
+      .action-buttons .btn {
+        margin: 0 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- メインコンテンツ -->
+    <div class="main-container container">
+      <!-- ページヘッダー -->
+      <div class="page-header">
+        <h1>{{ generation_name }} のグループ一覧</h1>
+      </div>
 
-    <!-- 新規アクションボタン -->
-    <div class="action-buttons">
-      <a href="{{ url_for('trade.trade_request', generation_id=generation_id) }}" class="btn btn-success btn-lg">
-        <i class="bi bi-pencil-square"></i> 売買申請
-      </a>      
-      {% if current_user.role == 'admin' %}
-      <a href="{{ url_for('trade.trade_accept', generation_id=generation_id) }}" class="btn btn-success btn-lg">
-        <i class="bi bi-pencil-square"></i> 売買承認
-      </a>
-      {% if gen and gen.activeness == 1 %}
+      <!-- 新規アクションボタン -->
+      <div class="action-buttons">
+        <a href="{{ url_for('trade.trade_request', generation_id=generation_id) }}" class="btn btn-success btn-lg">
+          <i class="bi bi-pencil-square"></i> 売買申請
+        </a>
+        {% if current_user.role == 'admin' %}
+        <a href="{{ url_for('trade.trade_accept', generation_id=generation_id) }}" class="btn btn-success btn-lg">
+          <i class="bi bi-pencil-square"></i> 売買承認
+        </a>
+        {% if gen and gen.activeness == 1 %}
         <form action="{{ url_for('trade.generation_groups', generation_id=generation_id) }}" method="POST" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-warning btn-lg">
             <i class="bi bi-arrow-repeat"></i> PL更新
           </button>
         </form>
+        {% endif %}
+        {% endif %}
+      </div>
+
+      <!-- グループ一覧テーブル -->
+      <div class="table-responsive">
+        <h2>グループ一覧</h2>
+        <table class="table table-striped table-hover">
+          <thead class="table-dark">
+            <tr>
+              <th scope="col" id="sortable">グループ名</th>
+              <th scope="col" id="sortable-pl">Total PL</th>
+              <th scope="col">詳細</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in group_list %}
+            <tr>
+              <td>{{ g.group_name }}</td>
+              <td>{{ "%.2f"|format(g.total_pl) }}</td>
+              <td>
+                <a href="{{ url_for('trade.group_detail', generation_id=generation_id, group_id=g.group_id) }}"
+                   class="btn btn-primary btn-sm">
+                  <i class="bi bi-eye"></i> 詳細へ
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- グラフ表示エリア -->
+      <div class="chart-container">
+        <!-- エクセルダウンロードボタンを右上に配置 -->
+        <a href="{{ url_for('trade.download_excel', generation_id=generation_id) }}"
+           class="btn btn-primary"
+           style="position: absolute; top: 10px; right: 10px;">
+          <i class="bi bi-file-earmark-excel"></i> エクセルでダウンロード
+        </a>
+        <h2>この期のグループPL推移グラフ</h2>
+        <canvas id="allGroupChart"></canvas>
+      </div>
+
+      <!-- 管理者メニュー（管理者のみ表示） -->
+      {% if current_user.role == 'admin' %}
+      <div class="admin-section">
+        <h2>管理者メニュー</h2>
+        <ul>
+          <li>
+            <a href="{{ url_for('trade.generation_groups_edit', generation_id=generation_id) }}">この期のグループを編集</a>
+          </li>
+          <li>
+            <a href="{{ url_for('trade.generation_edit') }}">期の編集</a>
+          </li>
+          <li>
+            <a href="{{ url_for('auth.register') }}">ユーザー登録</a>
+          </li>
+          <li>
+            <a href="{{ url_for('auth.users_edit') }}">ユーザー編集</a>
+          </li>
+        </ul>
+      </div>
       {% endif %}
-      {% endif %}
+
+      <!-- ダッシュボードに戻るリンク -->
+      <div class="mt-4 text-center">
+        <a href="{{ url_for('auth.unified_dashboard') }}" class="btn btn-secondary">
+          <i class="bi bi-arrow-left-circle"></i> ダッシュボードに戻る
+        </a>
+      </div>
+
+      <!-- ログアウトボタン -->
+      <div class="mt-4 text-center">
+        <a href="{{ url_for('auth.logout') }}" class="logout-button">
+          <i class="bi bi-box-arrow-right"></i> ログアウト
+        </a>
+      </div>
     </div>
 
-    <!-- グループ一覧テーブル -->
-    <div class="table-responsive">
-      <h2>グループ一覧</h2>
-      <table class="table table-striped table-hover">
-        <thead class="table-dark">
-          <tr>
-            <th scope="col" id="sortable">グループ名</th>
-            <th scope="col" id="sortable-pl">Total PL</th>
-            <th scope="col">詳細</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for g in group_list %}
-          <tr>
-            <td>{{ g.group_name }}</td>
-            <td>{{ "%.2f"|format(g.total_pl) }}</td>
-            <td>
-              <a href="{{ url_for('trade.group_detail', generation_id=generation_id, group_id=g.group_id) }}" class="btn btn-primary btn-sm">
-                <i class="bi bi-eye"></i> 詳細へ
-              </a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <!-- Bootstrap JSの読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.jsの読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- グラフ表示エリア -->
-    <div class="chart-container">
-      <h2>この期のグループPL推移グラフ</h2>
-      <canvas id="allGroupChart"></canvas>
-    </div>
+    <!-- テーブルソート機能の追加 -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        // テーブル内のセル値を取得する関数
+        const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
 
-    <!-- 管理者メニュー（管理者のみ表示） -->
-    {% if current_user.role == 'admin' %}
-    <div class="admin-section">
-      <h2>管理者メニュー</h2>
-      <ul>
-        <li><a href="{{ url_for('trade.generation_groups_edit', generation_id=generation_id) }}">この期のグループを編集</a></li>
-        <li><a href="{{ url_for('trade.generation_edit') }}">期の編集</a></li>
-        <li><a href="{{ url_for('auth.register') }}">ユーザー登録</a></li>
-        <li><a href="{{ url_for('auth.users_edit') }}">ユーザー編集</a></li>
-      </ul>
-    </div>
-    {% endif %}
-
-    <!-- ダッシュボードに戻るリンク -->
-    <div class="mt-4 text-center">
-      <a href="{{ url_for('auth.unified_dashboard') }}" class="btn btn-secondary">
-        <i class="bi bi-arrow-left-circle"></i> ダッシュボードに戻る
-      </a>
-    </div>
-
-    <!-- ログアウトボタン -->
-    <div class="mt-4 text-center">
-      <a href="{{ url_for('auth.logout') }}" class="logout-button">
-        <i class="bi bi-box-arrow-right"></i> ログアウト
-      </a>
-    </div>
-  </div>
-
-  <!-- Bootstrap JSの読み込み -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Chart.jsの読み込み -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  
-  <!-- テーブルソート機能の追加 -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      // テーブル内のセル値を取得する関数
-      const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
-      
-      // 指定された列の昇順／降順の比較関数
-      const comparer = function(idx, asc) {
-        return function(a, b) {
-          const v1 = getCellValue(asc ? a : b, idx);
-          const v2 = getCellValue(asc ? b : a, idx);
-          // 数値かどうかを判定し、数値なら数値比較、そうでなければ文字列比較
-          if (!isNaN(v1) && !isNaN(v2)) {
-            return parseFloat(v1) - parseFloat(v2);
-          }
-          return v1.localeCompare(v2, undefined, {numeric: true});
+        // 指定された列の昇順／降順の比較関数
+        const comparer = function(idx, asc) {
+          return function(a, b) {
+            const v1 = getCellValue(asc ? a : b, idx);
+            const v2 = getCellValue(asc ? b : a, idx);
+            // 数値かどうかを判定し、数値なら数値比較、そうでなければ文字列比較
+            if (!isNaN(v1) && !isNaN(v2)) {
+              return parseFloat(v1) - parseFloat(v2);
+            }
+            return v1.localeCompare(v2, undefined, { numeric: true });
+          };
         };
-      };
 
-      // ヘッダーにクリックイベントを追加する共通関数
-      const addSortListener = function(th, columnIndex) {
-        let asc = true;
-        th.style.cursor = 'pointer';
-        th.addEventListener('click', function () {
-          const table = th.closest('table');
-          const tbody = table.querySelector('tbody');
-          Array.from(tbody.querySelectorAll('tr'))
-            .sort(comparer(columnIndex, asc))
-            .forEach(tr => tbody.appendChild(tr));
-          asc = !asc;
-        });
-      };
+        // ヘッダーにクリックイベントを追加する共通関数
+        const addSortListener = function(th, columnIndex) {
+          let asc = true;
+          th.style.cursor = 'pointer';
+          th.addEventListener('click', function () {
+            const table = th.closest('table');
+            const tbody = table.querySelector('tbody');
+            Array.from(tbody.querySelectorAll('tr'))
+              .sort(comparer(columnIndex, asc))
+              .forEach(tr => tbody.appendChild(tr));
+            asc = !asc;
+          });
+        };
 
-      // 「グループ名」列（列インデックス0）のソートを有効化
-      const thName = document.getElementById('sortable');
-      if (thName) {
-        addSortListener(thName, 0);
-      }
-      
-      // 「Total PL」列（列インデックス1）のソートを有効化
-      const thPl = document.getElementById('sortable-pl');
-      if (thPl) {
-        addSortListener(thPl, 1);
-      }
-    });
-  </script>
+        // 「グループ名」列（列インデックス0）のソートを有効化
+        const thName = document.getElementById('sortable');
+        if (thName) {
+          addSortListener(thName, 0);
+        }
 
-  <!-- Chart.js グラフ初期化 -->
-  <script>
-    // Python側から渡された日付リストと各グループのデータセット
-    var labels = JSON.parse('{{ chart_dates|tojson }}');
-    var datasets = JSON.parse('{{ chart_datasets|tojson }}');
+        // 「Total PL」列（列インデックス1）のソートを有効化
+        const thPl = document.getElementById('sortable-pl');
+        if (thPl) {
+          addSortListener(thPl, 1);
+        }
+      });
+    </script>
 
-    var ctx = document.getElementById('allGroupChart').getContext('2d');
-    var allGroupChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: datasets
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'top' },
-          title: { display: false, text: 'グループPL推移' }
+    <!-- Chart.js グラフ初期化 -->
+    <script>
+      // Python側から渡された日付リストと各グループのデータセット
+      var labels = JSON.parse('{{ chart_dates|tojson }}');
+      var datasets = JSON.parse('{{ chart_datasets|tojson }}');
+
+      var ctx = document.getElementById('allGroupChart').getContext('2d');
+      var allGroupChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: datasets
         },
-        scales: {
-          x: {
-            title: { display: true, text: '日付' }
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: false, text: 'グループPL推移' }
           },
-          y: {
-            title: { display: true, text: 'Total PL' },
-            beginAtZero: true
-          }
-        },
-        elements: {
-          line: {
-            tension: 0.2  // 線の滑らかさを若干変更
+          scales: {
+            x: {
+              title: { display: true, text: '日付' }
+            },
+            y: {
+              title: { display: true, text: 'Total PL' },
+              beginAtZero: true
+            }
           },
-          point: {
-            radius: 4   // 各データポイントの半径を指定
+          elements: {
+            line: {
+              tension: 0.2  // 線の滑らかさを若干変更
+            },
+            point: {
+              radius: 4   // 各データポイントの半径を指定
+            }
           }
         }
-      }
-    });
-  </script>
-</body>
+      });
+    </script>
+  </body>
 </html>
