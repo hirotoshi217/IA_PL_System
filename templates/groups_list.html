@@ -156,7 +156,7 @@
         </a>
         {% if current_user.role == 'admin' %}
         <a href="{{ url_for('trade.trade_accept', generation_id=generation_id) }}" class="btn btn-success btn-lg">
-          <i class="bi bi-pencil-square"></i> 売買承認
+          <i class="bi bi-pencil-square"></i> 売買執行
         </a>
         {% if gen and gen.activeness == 1 %}
         <form action="{{ url_for('trade.generation_groups', generation_id=generation_id) }}" method="POST" style="display:inline;">
