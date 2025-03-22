@@ -18,6 +18,10 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    # ここでメンテナンスモードの設定を読み込む
+    # MAINTENANCE_MODE が取得できなければ "false" がデフォルト
+    app.config['MAINTENANCE_MODE'] = os.environ.get('MAINTENANCE_MODE', 'false').lower() == 'true'
+
     db.init_app(app)
     CSRFProtect(app)
 
@@ -31,6 +35,23 @@ def create_app():
         from models.user_models import Users
         return Users.query.get(int(user_id))
 
+    # ここで before_request によるメンテナンスモードチェックを追加
+    @app.before_request
+    def check_maintenance_mode():
+        # メンテナンスモードがオンの場合
+        if app.config.get('MAINTENANCE_MODE'):
+            # ホワイトリスト：/auth/ および /auth/login のみアクセス許可
+            allowed_paths = ['/auth/', '/auth/login']
+            if any(request.path.startswith(path) for path in allowed_paths):
+                return  # 許可する
+            # すでにログイン済みで、かつ管理者なら許可
+            if current_user.is_authenticated and current_user.role == 'admin':
+                return
+            # その他はメンテナンス画面を返す（503 Service Unavailable）
+            return "現在、システムはメンテナンス中です。後ほどお試しください。", 503
+
+
+    
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(trade_bp, url_prefix="/trade")
 
@@ -38,9 +59,6 @@ def create_app():
     def root_index():
         # / に来たら /auth/ にリダイレクト (オプション)
         return redirect(url_for('auth.index'))
-    @app.route('/db-info')
-    def db_info():
-        return f"Connected to: {app.config['SQLALCHEMY_DATABASE_URI']}"
 
     
     with app.app_context():
