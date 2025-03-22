@@ -21,10 +21,11 @@ def create_app():
     # ここでメンテナンスモードの設定を読み込む
     # MAINTENANCE_MODE が取得できなければ "false" がデフォルト
     app.config['MAINTENANCE_MODE'] = os.environ.get('MAINTENANCE_MODE', 'false').lower() == 'true'
-
+    
+      
     db.init_app(app)
     CSRFProtect(app)
-
+    Migrate(app, db)
 
     login_manager = LoginManager()
     login_manager.init_app(app)
