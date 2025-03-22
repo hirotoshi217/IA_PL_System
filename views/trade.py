@@ -585,6 +585,7 @@ def trade_accept():
                 print("申請データが見つかりません。")
                 return redirect(url_for('trade.trade_accept'))
             try:
+                # 管理者が入力した執行情報のみ受け取る
                 transaction_price = float(request.form.get('transaction_price'))
                 transaction_quantity = float(request.form.get('transaction_quantity'))
                 transaction_date_str = request.form.get('transaction_date')
@@ -594,6 +595,7 @@ def trade_accept():
                 print("取引情報の形式が不正です", "error0")
                 return redirect(url_for('trade.trade_accept'))
 
+            # Accept レコードは Request の基本情報＋admin の執行入力のみをセット
             approved_trade = Accept(
                 ticker=trade_req.ticker,
                 generation_id=trade_req.generation_id,
@@ -650,7 +652,7 @@ def trade_accept():
             # 更新後の取引日を new_transaction_date として扱う
             new_transaction_date = transaction_date
 
-            # Accept レコードの更新
+            # Accept レコードの更新（編集可能なのは執行価格、執行数量、執行日のみ）
             approved_trade.transaction_price = transaction_price
             approved_trade.transaction_quantity = transaction_quantity
             approved_trade.transaction_date = new_transaction_date
@@ -664,7 +666,7 @@ def trade_accept():
                     approved_trade.group_id,
                     new_transaction_date,
                     old_transaction_date,
-                    approved_trade  # 更新後の承認レコード
+                    approved_trade
                 )
             except Exception as e:
                 db.session.rollback()
