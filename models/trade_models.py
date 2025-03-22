@@ -28,9 +28,12 @@ class Request(db.Model):
     group_id = db.Column(db.Integer, db.ForeignKey('groups.group_id'), nullable=False)
     ticker = db.Column(db.String(20), nullable=False)
     request_type = db.Column(db.String(10), nullable=False)  # "buy" or "sell"
-    requested_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    request_price = db.Column(db.Float, nullable=False)
+    trade_type = db.Column(db.String(10), nullable=False)    # "成行" or "指値"
+    limit_order_price = db.Column(db.Float, nullable=True)     # 指値注文の場合に必須（成行の場合は None）
     request_quantity = db.Column(db.Float, nullable=False)
+    requested_execution_date = db.Column(db.Date, nullable=False)  # 実際の執行日
+    requested_execution_timing = db.Column(db.String(20), nullable=False)  # 「前場寄付」「前場引け」「後場寄付」「後場引け」「ザラ場」
+    requested_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     pending = db.Column(db.Integer, nullable=False, default=0)
 
 
