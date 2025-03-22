@@ -20,7 +20,6 @@ def create_app():
 
     db.init_app(app)
     CSRFProtect(app)
-    migrate = Migrate(app, db)  # マイグレーションの初期化
 
 
     login_manager = LoginManager()
