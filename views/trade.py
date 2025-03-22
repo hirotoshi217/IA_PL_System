@@ -425,27 +425,48 @@ def trade_request():
     if request.method == 'POST':
         # フォーム値の取得
         ticker_input = request.form.get('ticker')
-        trade_type = request.form.get('type')  # "buy" または "sell"
-        price_str = request.form.get('price')
-        quantity_str = request.form.get('quantity')
-        requested_date_str = request.form.get('requested_date')
+        trade_side = request.form.get('type')  # "buy" または "sell"
         group_id_str = request.form.get('group_id')
+        # 新規項目
+        order_method = request.form.get('trade_type')  # "成行" or "指値"
+        limit_order_price_str = request.form.get('limit_order_price')
+        quantity_str = request.form.get('quantity')
+        exec_date_str = request.form.get('requested_execution_date')
+        exec_timing = request.form.get('requested_execution_timing')
+        requested_date_str = request.form.get('requested_date')
         
-        if not (ticker_input and trade_type and price_str and quantity_str and requested_date_str and group_id_str):
+        # 必須項目チェック
+        if not (ticker_input and trade_side and group_id_str and order_method and quantity_str and exec_date_str and exec_timing and requested_date_str):
             flash("入力不足があります", "error")
             return redirect(url_for('trade.trade_request', generation_id=gen_id))
+        
         try:
-            price = float(price_str)
-            quantity = float(quantity_str)
-            requested_date = datetime.strptime(requested_date_str, '%Y-%m-%d')
             group_id = int(group_id_str)
+            quantity = float(quantity_str)
+            # 執行日は Date 型（※ date() を使って変換）
+            exec_date = datetime.strptime(exec_date_str, '%Y-%m-%d').date()
+            # 申請日は DateTime 型（フォームからの日付入力の場合、ここは適宜調整）
+            requested_date = datetime.strptime(requested_date_str, '%Y-%m-%d')
         except ValueError:
             flash("数値や日付の形式が不正です", "error")
             return redirect(url_for('trade.trade_request', generation_id=gen_id))
         
-        ticker = fix_ticker(ticker_input)
+        ticker = fix_ticker(ticker_input)  # 既存のティッカー整形関数
         
-        # 管理者の場合、pending の値をフォームから取得（値があれば）
+        # 注文方式が「指値」なら、指値価格は必須
+        if order_method == "指値":
+            if not limit_order_price_str:
+                flash("指値注文の場合、指値価格は必須です", "error")
+                return redirect(url_for('trade.trade_request', generation_id=gen_id))
+            try:
+                limit_order_price = float(limit_order_price_str)
+            except ValueError:
+                flash("指値価格の形式が不正です", "error")
+                return redirect(url_for('trade.trade_request', generation_id=gen_id))
+        else:
+            limit_order_price = None  # 成行の場合は不要
+        
+        # 管理者の場合、pending の値をフォームから取得（あれば）
         pending_value = None
         if current_user.role == 'admin':
             pending_value_str = request.form.get('pending')
@@ -461,28 +482,33 @@ def trade_request():
             generation_id=gen_id,
             group_id=group_id,
             ticker=ticker,
-            request_type=trade_type
+            request_type=trade_side
         ).first()
         
         if existing_request:
             # 更新処理
-            existing_request.request_price = price
+            existing_request.trade_type = order_method
+            existing_request.limit_order_price = limit_order_price
             existing_request.request_quantity = quantity
+            existing_request.requested_execution_date = exec_date
+            existing_request.requested_execution_timing = exec_timing
             existing_request.requested_date = requested_date
-            # 管理者であれば pending の更新も可能
             if current_user.role == 'admin' and pending_value is not None:
                 existing_request.pending = pending_value
             db.session.commit()
             flash("売買申請を更新しました", "success")
         else:
-            # 新規作成時、管理者の場合はフォームの pending 値（なければ0）を設定、非管理者は常に0
+            # 新規作成
             new_request = Request(
                 ticker=ticker,
                 generation_id=gen_id,
                 group_id=group_id,
-                request_type=trade_type,
-                request_price=price,
+                request_type=trade_side,
+                trade_type=order_method,
+                limit_order_price=limit_order_price,
                 request_quantity=quantity,
+                requested_execution_date=exec_date,
+                requested_execution_timing=exec_timing,
                 requested_date=requested_date,
                 pending = pending_value if (current_user.role == 'admin' and pending_value is not None) else 0
             )
@@ -490,6 +516,7 @@ def trade_request():
             db.session.commit()
             flash("売買申請を登録しました", "success")
         return redirect(url_for('trade.trade_request', generation_id=gen_id))
+    
     else:
         # GET時：指定された生成期に属する全申請を取得
         pending_requests = Request.query.filter_by(generation_id=gen_id).all()
