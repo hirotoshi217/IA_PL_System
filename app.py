@@ -1,7 +1,7 @@
 # app.py
 import os
-from flask import Flask, redirect, url_for
-from flask_login import LoginManager
+from flask import Flask, redirect, url_for, request
+from flask_login import LoginManager, current_user
 from flask_wtf.csrf import CSRFProtect
 from models import db
 from views.auth import auth_bp
