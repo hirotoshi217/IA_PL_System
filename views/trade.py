@@ -1453,13 +1453,13 @@ def get_previous_day_entry(pl_data, today_str):
     return pl_data[prev_key]
 
 
+from sqlalchemy.orm.attributes import flag_modified
+
 @trade_bp.cli.command('update_pl')
 def update_pl():
     import logging
     import pytz
     from datetime import datetime
-    # ※必要なモジュールのインポートがされているか確認してください
-
     logging.info("update_pl: コマンド開始")
     
     # 東京時間で当日の日付を取得
@@ -1472,7 +1472,7 @@ def update_pl():
         logging.error(f"update_pl: 当日の日付取得失敗: {str(e)}")
         return
 
-    # クエリ前のログ
+    # PLRecord のクエリ
     logging.info("update_pl: PLRecordのクエリ開始")
     try:
         pl_records = (
@@ -1485,37 +1485,38 @@ def update_pl():
         logging.error(f"update_pl: PLRecordクエリ失敗: {str(e)}")
         return
 
-    # クエリ結果のログ
     logging.info(f"update_pl: クエリ完了 - 更新対象のPLRecord数: {len(pl_records)}")
-
-    # ループ開始前のログ
     logging.info("update_pl: PLRecordの処理開始")
     for record in pl_records:
         try:
-            # 各レコードごとに固有の情報をログに出力
             logging.info(f"update_pl: レコード開始 - ID: {record.pl_record_id}, Ticker: {record.ticker}")
-            
-            ticker = fix_ticker(record.ticker)  # 整形処理
+            ticker = fix_ticker(record.ticker)
             generation_id = record.generation_id
-            pl_data = record.pl_data if record.pl_data else {}
+            # 新しい辞書オブジェクトとして pl_data を作成（既存内容はコピー）
+            current_pl_data = dict(record.pl_data) if record.pl_data else {}
     
-            if today_str not in pl_data:
-                prev_entry = get_previous_day_entry(pl_data, today_str)
-                pl_data[today_str] = prev_entry.copy()
+            if today_str not in current_pl_data:
+                prev_entry = get_previous_day_entry(current_pl_data, today_str)
+                # 新規エントリは、前日のエントリ（コピー）または空の初期値を設定
+                new_entry = prev_entry.copy() if prev_entry else {}
+                current_pl_data[today_str] = new_entry
                 logging.info(f"update_pl: {ticker} (Gen {generation_id}): 当日エントリ無し - 前日コピー作成")
                 
-            entry = pl_data[today_str]
+            entry = current_pl_data[today_str]
             old_close = entry.get("close_price", None)
             new_close = get_close_price_for_day(ticker, today)
             entry["close_price"] = new_close
-
             transaction_price = entry.get("transaction_price", 0)
             holding_quantity = entry.get("holding_quantity", 0)
             new_holding_pl = (new_close - transaction_price) * holding_quantity
             entry["holding_pl"] = new_holding_pl
 
-            pl_data[today_str] = entry
-            record.pl_data = pl_data
+            # 完全なコピーにより、更新内容が新しいオブジェクトとして再代入される
+            current_pl_data[today_str] = entry.copy()
+            # record.pl_data も新しい dict として再代入
+            record.pl_data = current_pl_data.copy()
+            # 明示的に変更をフラグ
+            flag_modified(record, "pl_data")
             db.session.add(record)
     
             logging.info(f"update_pl: {ticker} (Gen {generation_id}): old_close={old_close}, new_close={new_close}")
