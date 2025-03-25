@@ -1,6 +1,7 @@
 # models/trade_models.py
 from datetime import datetime
 from models import db
+from sqlalchemy.ext.mutable import MutableDict
 
 
 # ＊Generation, Groupはユーザー管理やシステム全体で利用している。
