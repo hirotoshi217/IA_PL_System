@@ -137,6 +137,7 @@ def generation_groups(generation_id):
 
                 pl_data[today_str] = entry
                 record.pl_data = pl_data
+                flag_modified(record, "pl_data")
                 db.session.add(record)
 
                 logging.info(
