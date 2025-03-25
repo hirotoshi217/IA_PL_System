@@ -16,7 +16,8 @@ def create_app():
     app.config.from_object('config.DevelopmentConfig')
 
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'SUPER_SECRET_KEY')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///db.sqlite3')
+    # app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///db.sqlite3') migration用
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # ここでメンテナンスモードの設定を読み込む
