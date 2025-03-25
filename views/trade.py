@@ -12,6 +12,7 @@ import pytz
 import logging
 from zoneinfo import ZoneInfo
 from sqlalchemy import func
+from sqlalchemy.orm.attributes import flag_modified
 
 
 sys.stdout.reconfigure(encoding='utf-8')  # 日本語の文字化け防止
