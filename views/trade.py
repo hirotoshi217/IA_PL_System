@@ -1,6 +1,6 @@
 # views/trade.py
 import sys
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, session, current_app
 from flask_login import login_required, current_user
 from models import db
 from models.user_models import Users
@@ -13,6 +13,8 @@ import logging
 from zoneinfo import ZoneInfo
 from sqlalchemy import func
 from sqlalchemy.orm.attributes import flag_modified
+import os
+import requests
 
 
 sys.stdout.reconfigure(encoding='utf-8')  # 日本語の文字化け防止
@@ -517,6 +519,8 @@ def trade_request():
             db.session.add(new_request)
             db.session.commit()
             flash("売買申請を登録しました", "success")
+            notify_slack(request_obj)
+            flash("Slackに通知を行いました")
         return redirect(url_for('trade.trade_request', generation_id=gen_id))
     
     else:
@@ -1533,4 +1537,52 @@ def update_pl():
     except Exception as e:
         db.session.rollback()
         logging.error(f"update_pl: DBコミットエラー: {str(e)}")
+
+
+
+
+
+def notify_slack(request_obj):
+    # 申請が提出されたが、まだ承認済みでない（pending == 0）場合のみ通知
+    if request_obj.pending != 0:
+        # すでに承認済みなら通知しない
+        return
+
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        current_app.logger.warning("SLACK_WEBHOOK_URL が設定されていません。")
+        return
+
+    # Group 情報を取得（グループ名を表示するため）
+    group = Group.query.get(request_obj.group_id)
+    group_name = group.group_name if group else str(request_obj.group_id)
+
+    # メッセージ内容（""" は含めず、シンプルなテキスト形式）
+    message = (
+        "以下の申請が提出されました。確認をお願いいたします。\n"
+        "ログインは　こちらから　→　https://iapls.com/auth/\n"
+        "申請の内容\n"
+        f"期： {request_obj.generation_id}　　グループ名： {group_name}\n"
+        f"Ticker番号： {request_obj.ticker}\n"
+        f"売買： {'買い' if request_obj.request_type.lower() == 'buy' else '売り'}\n"
+        f"注文方式： {request_obj.trade_type}\n"
+    )
+    # 注文方式が「指値」の場合のみ、指値価格を表示
+    if request_obj.trade_type == "指値" and request_obj.limit_order_price is not None:
+        message += f"指値価格： {request_obj.limit_order_price}\n"
+    message += (
+        f"数量： {request_obj.request_quantity}\n"
+        f"執行日： {request_obj.requested_execution_date.strftime('%Y-%m-%d')}\n"
+        f"執行セッション・時間帯： {request_obj.requested_execution_timing}"
+    )
+
+    payload = {"text": message}
+    try:
+        response = requests.post(webhook_url, json=payload)
+        if response.status_code != 200:
+            current_app.logger.error(f"Slack 通知エラー: {response.status_code}, {response.text}")
+        else:
+            flash("slackに行いました。")
+    except Exception as e:
+        current_app.logger.error(f"Slack 通知例外: {str(e)}")
 
