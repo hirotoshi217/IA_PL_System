@@ -519,7 +519,7 @@ def trade_request():
             db.session.add(new_request)
             db.session.commit()
             flash("売買申請を登録しました", "success")
-            notify_slack(request_obj)
+            notify_slack(new_request)
             flash("Slackに通知を行いました")
         return redirect(url_for('trade.trade_request', generation_id=gen_id))
     
