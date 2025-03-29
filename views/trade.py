@@ -1556,13 +1556,15 @@ def notify_slack(request_obj):
     # Group 情報を取得（グループ名を表示するため）
     group = Group.query.get(request_obj.group_id)
     group_name = group.group_name if group else str(request_obj.group_id)
+    generation = Generation.query.get(request_obj.generation_id)
+    generation_name = generation.generation_name if generation else str(request_obj.generation_id)
 
     # メッセージ内容（""" は含めず、シンプルなテキスト形式）
     message = (
         "以下の申請が提出されました。確認をお願いいたします。\n"
         "ログインは　こちらから　→　https://iapls.com/auth/\n"
         "申請の内容\n"
-        f"期： {request_obj.generation_id}　　グループ名： {group_name}\n"
+        f"期： {generation_name}　　グループ名： {group_name}\n"
         f"Ticker番号： {request_obj.ticker}\n"
         f"売買： {'買い' if request_obj.request_type.lower() == 'buy' else '売り'}\n"
         f"注文方式： {request_obj.trade_type}\n"
