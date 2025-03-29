@@ -1,6 +1,6 @@
 # views/trade.py
 import sys
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, session, current_app, send_file
 from flask_login import login_required, current_user
 from models import db
 from models.user_models import Users
@@ -15,7 +15,9 @@ from sqlalchemy import func
 from sqlalchemy.orm.attributes import flag_modified
 import os
 import requests
-
+import random
+import io
+import pandas as pd
 
 sys.stdout.reconfigure(encoding='utf-8')  # 日本語の文字化け防止
 
@@ -85,10 +87,6 @@ def generation_groups(generation_id):
     ある期(generation_id)のグループ一覧と、各グループのPL推移グラフ（新PLRecordのpl_dataから算出）を表示。
     POSTリクエストの場合は、管理者がアクティブ期のPLを更新するアクションを追加。
     """
-    from datetime import datetime
-    import pytz
-    import logging
-
     # 期を取得
     gen = Generation.query.get_or_404(generation_id)
 
@@ -105,61 +103,9 @@ def generation_groups(generation_id):
         if gen.activeness != 1:
             flash('アクティブではない期のPLは更新できません。', 'warning')
             return redirect(url_for('trade.generation_groups', generation_id=generation_id))
-
-        # 3) CLIコマンド「update_pl」相当のロジックを、この期だけに適用して実行
-        tokyo_tz = pytz.timezone("Asia/Tokyo")
-        today = datetime.now(tokyo_tz).date()
-        today_str = today.strftime("%Y%m%d")
-        logging.info(f"WEB更新 - generation {generation_id} のPLを更新します: 当日 {today_str}")
-
-        # この期に関連するPLRecord（= Generation.activeness==1 はすでにチェック済み）
-        pl_records = PLRecord.query.filter_by(generation_id=generation_id).all()
-
-        for record in pl_records:
-            ticker = fix_ticker(record.ticker)
-            pl_data = record.pl_data if record.pl_data else {}
-
-            # 当日エントリが存在しない場合、前日分をコピーして作成
-            if today_str not in pl_data:
-                prev_entry = get_previous_day_entry(pl_data, today_str)
-                pl_data[today_str] = prev_entry.copy()  # 必要に応じて .copy()
-                logging.info(f"[{ticker}] 当日エントリが無かったため前日コピーを作成 (Gen {generation_id})")
-
-            # 当日エントリ更新
-            entry = pl_data[today_str]
-            try:
-                old_close = entry.get("close_price", None)
-                new_close = get_close_price_for_day(ticker, today)
-                entry["close_price"] = new_close
-
-                transaction_price = entry.get("transaction_price", 0)
-                holding_quantity = entry.get("holding_quantity", 0)
-                new_holding_pl = (new_close - transaction_price) * holding_quantity
-                entry["holding_pl"] = new_holding_pl
-
-                pl_data[today_str] = entry
-                record.pl_data = pl_data
-                flag_modified(record, "pl_data")
-                db.session.add(record)
-
-                logging.info(
-                    f"[{ticker}] old_close={old_close}, new_close={new_close}, "
-                    f"tx_price={transaction_price}, qty={holding_quantity}, holding_pl={new_holding_pl}"
-                )
-            except Exception as e:
-                logging.error(f"[{ticker}] 更新中にエラー発生: {str(e)}")
-                continue
-
-        # データベースにコミット
-        try:
-            db.session.commit()
-            flash("PLの更新が完了しました。", "success")
-            logging.info(f"WEB更新 - generation {generation_id}: PL更新完了")
-        except Exception as e:
-            db.session.rollback()
-            logging.error(f"WEB更新 - コミットエラー: {str(e)}")
-            flash("PLの更新中にエラーが発生しました。", "danger")
-
+        # update_pl()を利用
+        update_pl()
+        
         return redirect(url_for('trade.generation_groups', generation_id=generation_id))
 
     # ---------------------------
@@ -193,7 +139,6 @@ def generation_groups(generation_id):
 
     unique_dates = sorted(list(unique_dates))
 
-    import random
     for g in groups:
         data = []
         # 辞書形式に変換（キー：日付、値：PL）
@@ -238,9 +183,6 @@ def generation_groups(generation_id):
 @trade_bp.route('/generation/<int:generation_id>/download_excel', methods=['GET'])
 @login_required
 def download_excel(generation_id):
-    import io
-    import pandas as pd
-    from flask import send_file
 
     # 期の存在チェック
     gen = Generation.query.get_or_404(generation_id)
@@ -1463,9 +1405,6 @@ from sqlalchemy.orm.attributes import flag_modified
 
 @trade_bp.cli.command('update_pl')
 def update_pl():
-    import logging
-    import pytz
-    from datetime import datetime
     logging.info("update_pl: コマンド開始")
     
     # 東京時間で当日の日付を取得
@@ -1498,9 +1437,17 @@ def update_pl():
             logging.info(f"update_pl: レコード開始 - ID: {record.pl_record_id}, Ticker: {record.ticker}")
             ticker = fix_ticker(record.ticker)
             generation_id = record.generation_id
+            # ここで、今日が取引日かどうかをチェック
+            try:
+                # 今日だけの取引日リストを取得
+                trading_today = get_trading_days(ticker, today, today)
+            except Exception as e:
+                logging.info(f"update_pl: {ticker}: 市場が休みのため更新をスキップします。")
+                continue  # 今日の取引データがなければ、休日とみなしてスキップ
+            
             # 新しい辞書オブジェクトとして pl_data を作成（既存内容はコピー）
             current_pl_data = dict(record.pl_data) if record.pl_data else {}
-    
+
             if today_str not in current_pl_data:
                 prev_entry = get_previous_day_entry(current_pl_data, today_str)
                 # 新規エントリは、前日のエントリ（コピー）または空の初期値を設定
