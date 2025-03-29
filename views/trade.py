@@ -103,9 +103,8 @@ def generation_groups(generation_id):
         if gen.activeness != 1:
             flash('アクティブではない期のPLは更新できません。', 'warning')
             return redirect(url_for('trade.generation_groups', generation_id=generation_id))
-        # update_pl()を利用
-        update_pl()
-        
+        # update_pl_by_manual()を利用
+        update_pl_by_manual()
         return redirect(url_for('trade.generation_groups', generation_id=generation_id))
 
     # ---------------------------
@@ -1486,6 +1485,86 @@ def update_pl():
         logging.error(f"update_pl: DBコミットエラー: {str(e)}")
 
 
+def update_pl_by_manual():
+    logging.info("update_pl: コマンド開始")
+    
+    # 東京時間で当日の日付を取得
+    try:
+        tokyo_tz = pytz.timezone("Asia/Tokyo")
+        today = datetime.now(tokyo_tz).date()
+        today_str = today.strftime("%Y%m%d")
+        logging.info(f"update_pl: 当日の日付取得成功 - {today_str}")
+    except Exception as e:
+        logging.error(f"update_pl: 当日の日付取得失敗: {str(e)}")
+        return
+
+    # PLRecord のクエリ
+    logging.info("update_pl: PLRecordのクエリ開始")
+    try:
+        pl_records = (
+            PLRecord.query
+            .join(Generation, PLRecord.generation_id == Generation.generation_id)
+            .filter(Generation.activeness == 1)
+            .all()
+        )
+    except Exception as e:
+        logging.error(f"update_pl: PLRecordクエリ失敗: {str(e)}")
+        return
+
+    logging.info(f"update_pl: クエリ完了 - 更新対象のPLRecord数: {len(pl_records)}")
+    logging.info("update_pl: PLRecordの処理開始")
+    for record in pl_records:
+        try:
+            logging.info(f"update_pl: レコード開始 - ID: {record.pl_record_id}, Ticker: {record.ticker}")
+            ticker = fix_ticker(record.ticker)
+            generation_id = record.generation_id
+            # ここで、今日が取引日かどうかをチェック
+            try:
+                # 今日だけの取引日リストを取得
+                trading_today = get_trading_days(ticker, today, today)
+            except Exception as e:
+                logging.info(f"update_pl: {ticker}: 市場が休みのため更新をスキップします。")
+                continue  # 今日の取引データがなければ、休日とみなしてスキップ
+            
+            # 新しい辞書オブジェクトとして pl_data を作成（既存内容はコピー）
+            current_pl_data = dict(record.pl_data) if record.pl_data else {}
+
+            if today_str not in current_pl_data:
+                prev_entry = get_previous_day_entry(current_pl_data, today_str)
+                # 新規エントリは、前日のエントリ（コピー）または空の初期値を設定
+                new_entry = prev_entry.copy() if prev_entry else {}
+                current_pl_data[today_str] = new_entry
+                logging.info(f"update_pl: {ticker} (Gen {generation_id}): 当日エントリ無し - 前日コピー作成")
+                
+            entry = current_pl_data[today_str]
+            old_close = entry.get("close_price", None)
+            new_close = get_close_price_for_day(ticker, today)
+            entry["close_price"] = new_close
+            transaction_price = entry.get("transaction_price", 0)
+            holding_quantity = entry.get("holding_quantity", 0)
+            new_holding_pl = (new_close - transaction_price) * holding_quantity
+            entry["holding_pl"] = new_holding_pl
+
+            # 完全なコピーにより、更新内容が新しいオブジェクトとして再代入される
+            current_pl_data[today_str] = entry.copy()
+            # record.pl_data も新しい dict として再代入
+            record.pl_data = current_pl_data.copy()
+            # 明示的に変更をフラグ
+            flag_modified(record, "pl_data")
+            db.session.add(record)
+    
+            logging.info(f"update_pl: {ticker} (Gen {generation_id}): old_close={old_close}, new_close={new_close}")
+            logging.info(f"update_pl: {ticker}: transaction_price={transaction_price}, holding_quantity={holding_quantity}, new holding_pl={new_holding_pl}")
+        except Exception as e:
+            logging.error(f"update_pl: レコード処理中エラー (Ticker {record.ticker}): {str(e)}")
+            continue
+
+    try:
+        db.session.commit()
+        logging.info("update_pl: 全てのPLRecord更新完了")
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"update_pl: DBコミットエラー: {str(e)}")
 
 
 
