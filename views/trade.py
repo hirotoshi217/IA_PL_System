@@ -1440,6 +1440,10 @@ def update_pl():
             try:
                 # 今日だけの取引日リストを取得
                 trading_today = get_trading_days(ticker, today, today)
+                if not trading_today:
+                    logging.info(f"update_pl:{ticker}:市場が休みのため更新をスキップします")
+                    continue
+
             except Exception as e:
                 logging.info(f"update_pl: {ticker}: 市場が休みのため更新をスキップします。")
                 continue  # 今日の取引データがなければ、休日とみなしてスキップ
@@ -1522,6 +1526,9 @@ def update_pl_by_manual():
             try:
                 # 今日だけの取引日リストを取得
                 trading_today = get_trading_days(ticker, today, today)
+                if not trading_today:
+                    logging.info(f"update_pl:{ticker}:市場が休みのため更新をスキップします")
+                    continue
             except Exception as e:
                 logging.info(f"update_pl: {ticker}: 市場が休みのため更新をスキップします。")
                 continue  # 今日の取引データがなければ、休日とみなしてスキップ
